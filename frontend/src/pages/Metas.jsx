@@ -651,10 +651,10 @@ export default function Metas() {
             </div>
           </div>
 
-          {/* Perspetiva do CEO AI */}
+          {/* Perspetiva do CEO AI 2.0 */}
           <div className="surface rounded-3xl p-6 md:p-8" data-testid="ceo-plan-section">
             <div className="flex items-center justify-between flex-wrap gap-3 mb-3">
-              <h3 className="font-serif-lux text-2xl flex items-center gap-2"><Sparkles className="w-5 h-5 text-[#3B82F6]" /> Perspetiva do CEO AI</h3>
+              <h3 className="font-serif-lux text-2xl flex items-center gap-2"><Sparkles className="w-5 h-5 text-[#3B82F6]" /> Perspetiva do CEO AI 2.0</h3>
               <Button data-testid="generate-plan-btn" onClick={generatePlan} disabled={planLoading} className="rounded-full bg-[#3B82F6] text-white hover:bg-[#2563EB]">
                 {planLoading ? <Loader2 className="w-4 h-4 animate-spin mr-2" /> : <Sparkles className="w-4 h-4 mr-2" />}
                 {plan ? "Gerar de novo" : "Pedir perspetiva do CEO"}

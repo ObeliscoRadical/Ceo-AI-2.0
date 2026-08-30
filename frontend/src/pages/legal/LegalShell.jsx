@@ -2,7 +2,7 @@ import { Link } from "react-router-dom";
 import { ArrowLeft } from "lucide-react";
 
 export const CONTACT_EMAIL = "obeliscoradical@gmail.com";
-export const COMPANY_NAME = "CEO AI";
+export const COMPANY_NAME = "CEO AI 2.0";
 
 export function LegalShell({ title, updated, children }) {
   return (

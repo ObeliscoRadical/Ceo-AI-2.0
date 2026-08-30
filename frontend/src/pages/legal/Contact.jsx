@@ -26,7 +26,7 @@ export default function Contact() {
   }, []);
 
   useEffect(() => {
-    applyPublicSeo({ title: "CEO AI | Contacto", description: intro, canonicalPath: "/contacto" });
+    applyPublicSeo({ title: "CEO AI 2.0 | Contacto", description: intro, canonicalPath: "/contacto" });
     trackPublicSurface("contact", "/contacto", "Contacto").catch(() => {});
   }, [intro]);
 

@@ -11,30 +11,71 @@ from motor.motor_asyncio import AsyncIOMotorClient
 from typing import List, Optional, Dict, Any
 from bson import ObjectId
 from datetime import datetime, timezone, timedelta
-import logging, uuid, jwt, bcrypt, io, json, requests, random, stripe, httpx, hashlib, secrets, base64
-from emergentintegrations.llm.chat import LlmChat, UserMessage, TextDelta, StreamDone, ImageContent, FileContentWithMimeType
+import logging, uuid, jwt, bcrypt, io, json, requests, random, stripe, httpx, hashlib, secrets, base64, asyncio, threading, time, re, urllib.parse
+from google import genai
+from google.genai import types
+
+# ---------------------------------------------------------------- message / event classes
+class TextDelta:
+    def __init__(self, content: str):
+        self.content = content
+
+class StreamDone:
+    pass
+
+class UserMessage:
+    def __init__(self, text: str, file_contents: list = None):
+        self.text = text
+        self.file_contents = file_contents or []
+
+class ImageContent:
+    def __init__(self, image_base64: str):
+        self.image_base64 = image_base64
+
+class FileContentWithMimeType:
+    def __init__(self, file_path: str, mime_type: str = "application/pdf"):
+        self.file_path = file_path
+        self.mime_type = mime_type
 
 # ---------------------------------------------------------------- config
 JWT_ALGORITHM = "HS256"
-EMERGENT_KEY = os.environ.get("EMERGENT_LLM_KEY")
-STORAGE_URL = "https://integrations.emergentagent.com/objstore/api/v1/storage"
-APP_NAME = "ceo-ai"
-stripe.api_key = os.environ.get("STRIPE_SECRET_KEY") or "sk_test_emergent"
+GEMINI_API_KEY = os.environ.get("GEMINI_API_KEY")
+genai_client = genai.Client(api_key=GEMINI_API_KEY) if GEMINI_API_KEY else None
+
+# LiteLLM Central Gateway Configuration (OpenAI Compatible)
+LITELLM_BASE_URL = (
+    os.environ.get("LITELLM_BASE_URL")
+    or os.environ.get("OPENAI_BASE_URL")
+    or os.environ.get("BASE_URL")
+    or "https://berriailitellm-databasev1826rc3-production-2f93.up.railway.app"
+).rstrip("/")
+LITELLM_API_KEY = (
+    os.environ.get("LITELLM_API_KEY")
+    or os.environ.get("OPENAI_API_KEY")
+    or os.environ.get("API_KEY")
+    or ""
+)
+LITELLM_MODEL = (
+    os.environ.get("LITELLM_MODEL")
+    or os.environ.get("MODEL")
+    or "Gemini Auto Key"
+)
+
+APP_NAME = "ceo-ai-2.0"
+stripe.api_key = os.environ.get("STRIPE_SECRET_KEY") or "sk_test_stripe"
 STRIPE_WEBHOOK_SECRET = os.environ.get("STRIPE_WEBHOOK_SECRET", "")
-EMAIL_BASE_URL = "https://integrations.emergentagent.com"
-EMAIL_KEY = os.environ.get("EMERGENT_EMAIL_KEY")
-EMAIL_FROM_NAME = os.environ.get("EMAIL_FROM_NAME", "CEO AI")
+EMAIL_FROM_NAME = os.environ.get("EMAIL_FROM_NAME", "CEO AI 2.0")
 
 MODEL_MAP = {
-    "claude": ("anthropic", "claude-opus-4-7"),
-    "gpt": ("openai", "gpt-5.5"),
-    "gemini": ("gemini", "gemini-3.1-pro-preview"),
+    "claude": ("gemini", "gemini-3.7-flash"),
+    "gpt": ("gemini", "gemini-3.7-flash"),
+    "gemini": ("gemini", "gemini-3.7-flash"),
 }
 CURRENCY_SYMBOL = {"EUR": "€", "BRL": "R$", "USD": "$"}
 
-mongo_url = os.environ['MONGO_URL']
+mongo_url = os.environ.get('MONGO_URL', 'mongodb://localhost:27017/ceo_ai_2_0')
 client = AsyncIOMotorClient(mongo_url)
-db = client[os.environ['DB_NAME']]
+db = client[os.environ.get('DB_NAME', 'ceo_ai_2_0')]
 
 logging.basicConfig(level=logging.INFO, format='%(asctime)s - %(name)s - %(levelname)s - %(message)s')
 logger = logging.getLogger(__name__)
@@ -57,8 +98,10 @@ def create_access_token(user_id: str, email: str) -> str:
     return jwt.encode(payload, get_jwt_secret(), algorithm=JWT_ALGORITHM)
 
 def set_auth_cookie(response: Response, token: str):
-    response.set_cookie(key="access_token", value=token, httponly=True, secure=True,
-                        samesite="none", max_age=604800, path="/")
+    is_secure = os.environ.get("COOKIE_SECURE", "false").lower() in ("true", "1")
+    samesite = "none" if is_secure else "lax"
+    response.set_cookie(key="access_token", value=token, httponly=True, secure=is_secure,
+                        samesite=samesite, max_age=604800, path="/")
 
 async def get_current_user(request: Request) -> dict:
     token = request.cookies.get("access_token")
@@ -112,38 +155,169 @@ async def active_company_id(user_id: str) -> Optional[str]:
     return cid
 
 # ---------------------------------------------------------------- storage
-storage_key = None
+UPLOAD_DIR = ROOT_DIR / "uploads"
+UPLOAD_DIR.mkdir(parents=True, exist_ok=True)
+
 def init_storage():
-    global storage_key
-    if storage_key:
-        return storage_key
-    resp = requests.post(f"{STORAGE_URL}/init", json={"emergent_key": EMERGENT_KEY}, timeout=30)
-    resp.raise_for_status()
-    storage_key = resp.json()["storage_key"]
-    return storage_key
+    UPLOAD_DIR.mkdir(parents=True, exist_ok=True)
+    return True
 
 def put_object(path: str, data: bytes, content_type: str) -> dict:
-    key = init_storage()
-    resp = requests.put(f"{STORAGE_URL}/objects/{path}",
-                        headers={"X-Storage-Key": key, "Content-Type": content_type}, data=data, timeout=120)
-    resp.raise_for_status()
-    return resp.json()
+    target_path = UPLOAD_DIR / path
+    target_path.parent.mkdir(parents=True, exist_ok=True)
+    with open(target_path, "wb") as f:
+        f.write(data)
+    return {"path": path, "url": f"/uploads/{path}"}
 
-async def generate_marketing_images(prompt: str, number_of_images: int = 1) -> list[bytes]:
-    """Gera 1..N imagens de marketing (GPT Image 1 via chave Emergent) e devolve os bytes PNG."""
-    from emergentintegrations.llm.openai.image_generation import OpenAIImageGeneration
-    gen = OpenAIImageGeneration(api_key=EMERGENT_KEY)
-    imgs = await gen.generate_images(
-        prompt=f"{prompt}. NÃO incluir qualquer texto, palavras, letras, números ou logótipos na imagem. "
-               "Composição limpa e profissional, fotografia/ilustração publicitária de alta qualidade.",
-        model="gpt-image-1", number_of_images=max(1, min(int(number_of_images or 1), 4)))
-    if not imgs:
-        raise RuntimeError("Nenhuma imagem gerada")
-    return imgs
+async def generate_post_visual_scenes(titulo: str, legenda: str, tema: str = "", sector: str = "", company_name: str = "") -> list[str]:
+    """Usa o Gemini como Diretor Criativo Fotográfico para criar 3 cenas visuais altamente contextuais em inglês estritamente alinhadas com a LEGENDA e história do post."""
+    system = (
+        "You are an award-winning Commercial Photography Creative Director. "
+        "Your task is to translate a social media post's title, caption (legenda), and theme into 3 distinct, "
+        "highly contextual, photorealistic image prompts for an AI image generator (Flux). "
+        "CRITICAL RULES:\n"
+        "1. The image MUST directly illustrate the specific narrative and situation described in the CAPTION (e.g. protecting home appliances against electrical surges, inspecting residential circuit boards, modern surge protection).\n"
+        "2. NO generic, random or irrelevant images.\n"
+        "3. Each prompt must be in English, single line (30-50 words), describing exact subject, setting, lighting, mood, photorealistic commercial photography style, 8k resolution.\n"
+        "4. Always append: 'no text, no words, no watermark, no logos'.\n"
+        "5. Return ONLY a JSON list of 3 strings: [\"prompt1\", \"prompt2\", \"prompt3\"]."
+    )
+    user_prompt = (
+        f"Empresa: {company_name} (Setor: {sector})\n"
+        f"Título: {titulo}\n"
+        f"Tema: {tema}\n"
+        f"Legenda Completa: {legenda}\n\n"
+        "Generate 3 distinct realistic scene prompts strictly matching the narrative of the caption in JSON format:"
+    )
+    try:
+        res = await ai_text(system, user_prompt)
+        start = res.find('[')
+        end = res.rfind(']') + 1
+        if start >= 0 and end > start:
+            parsed = json.loads(res[start:end])
+            if isinstance(parsed, list) and len(parsed) >= 1:
+                return [str(p).strip() for p in parsed if p][:3]
+    except Exception as e:
+        logger.warning(f"generate_post_visual_scenes note: {e}")
+    
+    clean_title = (titulo or 'electrical maintenance').replace('"', '')
+    return [
+        f"Commercial photography illustrating {clean_title} in a high-end modern residential interior, warm natural lighting, 8k resolution, photorealistic, no text, no watermark",
+        f"Close-up detailed commercial shot of professional electrician testing home electrical systems for {clean_title}, sharp focus, 8k, photorealistic, no text, no watermark",
+        f"Cinematic lifestyle shot of modern home appliances safely operating with electrical surge protection, elegant interior, 8k, photorealistic, no text, no watermark"
+    ]
 
+async def search_topic_exact_images(query: str, count: int = 3) -> list[bytes]:
+    """Procura imagens reais e profissionais no DuckDuckGo / Openverse estritamente correspondentes ao tema."""
+    results = []
+    headers = {
+        "User-Agent": "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/122.0.0.0 Safari/537.36",
+    }
+    try:
+        async with httpx.AsyncClient(headers=headers, timeout=10.0, follow_redirects=True) as client:
+            # 1. DuckDuckGo Image Search
+            token_res = await client.get("https://duckduckgo.com/", params={"q": query})
+            vqd_match = re.search(r'vqd=([\d-]+)', token_res.text) or re.search(r'vqd="([^"]+)"', token_res.text)
+            if vqd_match:
+                vqd = vqd_match.group(1)
+                search_res = await client.get("https://duckduckgo.com/i.js", params={"l": "us-en", "o": "json", "q": query, "vqd": vqd, "f": ",,,", "p": "1"})
+                if search_res.status_code == 200:
+                    items = search_res.json().get("results", [])
+                    for it in items:
+                        if len(results) >= count:
+                            break
+                        img_url = it.get("image")
+                        if img_url and not img_url.endswith(".svg"):
+                            try:
+                                dl_res = await client.get(img_url, timeout=6.0)
+                                if dl_res.status_code == 200 and len(dl_res.content) > 6000 and dl_res.headers.get("content-type", "").startswith("image/"):
+                                    results.append(dl_res.content)
+                            except Exception:
+                                pass
+    except Exception as e:
+        logger.debug(f"search_topic_exact_images note: {e}")
+    return results
+
+async def generate_marketing_images(prompt: str = "", number_of_images: int = 3, scene_prompts: list[str] = None, topic_query: str = "") -> list[bytes]:
+    """Gera 1..N imagens de marketing estritamente fiéis ao tema e legenda do post."""
+    count = max(1, min(int(number_of_images or 3), 4))
+    
+    if not scene_prompts:
+        clean_p = prompt or "electrical maintenance safety inspection"
+        scene_prompts = [
+            f"{clean_p}, wide angle commercial photography, natural light, 8k, photorealistic, no text, no watermark",
+            f"{clean_p}, close up detailed shot, sharp focus, professional lighting, 8k, photorealistic, no text, no watermark",
+            f"{clean_p}, cinematic modern editorial photography, crisp details, 8k, photorealistic, no text, no watermark"
+        ][:count]
+    
+    results = []
+    headers = {"User-Agent": "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36"}
+
+    async with httpx.AsyncClient(timeout=14.0, follow_redirects=True, headers=headers) as client:
+        for idx, scene in enumerate(scene_prompts[:count]):
+            img_bytes = None
+            seed = int(time.time() * 1000) % 1000000 + (idx * 337)
+            enc_scene = urllib.parse.quote(scene[:350])
+
+            # 1. Tentar Pollinations AI com modelo Flux (fotografia ultrarrealista de topo)
+            for model_name in ["flux", "turbo"]:
+                poll_url = f"https://image.pollinations.ai/prompt/{enc_scene}?width=1080&height=1080&seed={seed}&nologo=true&model={model_name}"
+                try:
+                    res = await client.get(poll_url)
+                    if res.status_code == 200 and len(res.content) > 5000 and not res.content.startswith(b'{"error"'):
+                        img_bytes = res.content
+                        break
+                except Exception as e:
+                    logger.debug(f"Pollinations model {model_name} note: {e}")
+
+            if img_bytes:
+                results.append(img_bytes)
+
+            if len(results) >= count:
+                break
+            await asyncio.sleep(0.6)
+
+    # 2. Fallback de Imagens Reais Exatamente Alinhadas ao Título/Tema (NUNCA fotos aleatórias)
+    if len(results) < count:
+        needed = count - len(results)
+        search_q = topic_query or (scene_prompts[0] if scene_prompts else "electrical maintenance safety")
+        clean_q = re.sub(r'(photorealistic|8k|no text|no watermark|no logos|commercial photography|,)', ' ', search_q)
+        topic_images = await search_topic_exact_images(clean_q.strip(), count=needed)
+        for t_img in topic_images:
+            results.append(t_img)
+            if len(results) >= count:
+                break
+
+    # 3. Fallback Procedural caso tudo falhe
+    while len(results) < count:
+        try:
+            from PIL import Image, ImageDraw
+            idx = len(results)
+            palettes = [
+                ((15, 23, 42), (30, 58, 138), (59, 130, 246)),
+                ((15, 23, 42), (19, 78, 74), (16, 185, 129)),
+                ((24, 24, 27), (88, 28, 135), (168, 85, 247)),
+                ((15, 23, 42), (124, 45, 18), (249, 115, 22)),
+            ]
+            c_bg, c_mid, c_accent = palettes[idx % len(palettes)]
+            img = Image.new("RGBA", (1080, 1080), c_bg)
+            draw = ImageDraw.Draw(img)
+            for r in range(500, 50, -10):
+                alpha = int(35 * (1 - r / 500))
+                draw.ellipse([540 - r, 540 - r, 540 + r, 540 + r], fill=(c_accent[0], c_accent[1], c_accent[2], alpha))
+            draw.rectangle([60, 60, 1020, 1020], outline=c_accent, width=4)
+            draw.line([(60, 540), (1020, 540)], fill=(c_mid[0], c_mid[1], c_mid[2], 120), width=2)
+            buf = io.BytesIO()
+            img.save(buf, format="PNG")
+            results.append(buf.getvalue())
+        except Exception as e:
+            logger.error(f"Procedural fallback error: {e}")
+            break
+
+    return results
 
 async def generate_marketing_image(prompt: str) -> bytes:
-    """Compat wrapper para chamadas que ainda pedem só 1 imagem."""
+    """Compat wrapper para chamadas que pedem 1 imagem."""
     imgs = await generate_marketing_images(prompt, number_of_images=1)
     return imgs[0]
 
@@ -188,13 +362,17 @@ def composite_logo(base_bytes: bytes, logo_bytes: bytes) -> bytes:
     return out.getvalue()
 
 async def store_public_media(uid: str, data: bytes, ct: str = "image/png") -> str:
-    """Guarda bytes de imagem e devolve URL público (servido por /api/public/media/{id})."""
+    """Guarda bytes de imagem e devolve URL público absoluto no backend."""
     mid = str(uuid.uuid4())
-    await db.social_media.insert_one({"_id": mid, "user_id": uid,
-                                      "data": base64.b64encode(data).decode(), "content_type": ct,
-                                      "created_at": datetime.now(timezone.utc).isoformat()})
-    base = (os.environ.get("FRONTEND_URL", "") or "").rstrip("/")
-    return f"{base}/api/public/media/{mid}"
+    await db.social_media.insert_one({
+        "_id": mid, 
+        "user_id": uid,
+        "data": base64.b64encode(data).decode(), 
+        "content_type": ct,
+        "created_at": datetime.now(timezone.utc).isoformat()
+    })
+    backend_port = os.environ.get("PORT", "8001")
+    return f"http://localhost:{backend_port}/api/public/media/{mid}"
 
 def extract_document_text(data: bytes, content_type: str, filename: str) -> str:
     name = (filename or "").lower(); ct = (content_type or "").lower()
@@ -362,32 +540,27 @@ def _snc_reconcile(lines):
     return totals, reconciled, diff, kept
 
 async def extract_financial_document(data: bytes, content_type: str, filename: str):
-    import tempfile, os as _os, json as _json, base64
+    import json as _json
     ct = (content_type or "").lower(); name = (filename or "").lower()
-    chat = LlmChat(api_key=EMERGENT_KEY, session_id=f"fin-{uuid.uuid4()}",
-                   system_message="És um Contabilista Certificado português. Respondes só com JSON válido.").with_model("gemini", FINANCE_MODEL)
-    tmp = None; fc = None; text_inline = None
+    sysmsg = "És um Contabilista Certificado português. Respondes só com JSON válido."
+    
+    parts = []
+    if name.endswith(".pdf") or "pdf" in ct:
+        parts.append(types.Part.from_bytes(data=data, mime_type="application/pdf"))
+        prompt_text = FIN_SCHEMA_PROMPT
+    elif ct.startswith("image/"):
+        mime = "image/png" if "png" in ct else ("image/jpeg" if "jp" in ct else "image/webp")
+        parts.append(types.Part.from_bytes(data=data, mime_type=mime))
+        prompt_text = FIN_SCHEMA_PROMPT
+    else:
+        text_inline = extract_document_text(data, content_type, filename)[:15000]
+        prompt_text = FIN_SCHEMA_PROMPT + "\n\nCONTEÚDO:\n" + (text_inline or "")
+    parts.append(prompt_text)
+
     try:
-        if name.endswith(".pdf") or "pdf" in ct:
-            tmp = tempfile.NamedTemporaryFile(delete=False, suffix=".pdf"); tmp.write(data); tmp.close()
-            fc = [FileContentWithMimeType(file_path=tmp.name, mime_type="application/pdf")]
-        elif ct.startswith("image/"):
-            fc = [ImageContent(image_base64=base64.b64encode(data).decode())]
-        else:
-            text_inline = extract_document_text(data, content_type, filename)[:15000]
-        msg = UserMessage(text=FIN_SCHEMA_PROMPT + (("\n\nCONTEÚDO:\n" + text_inline) if text_inline else ""),
-                          file_contents=fc) if fc else UserMessage(text=FIN_SCHEMA_PROMPT + "\n\nCONTEÚDO:\n" + (text_inline or ""))
-        out = ""
-        async for ev in chat.stream_message(msg):
-            if isinstance(ev, TextDelta):
-                out += ev.content
-            elif isinstance(ev, StreamDone):
-                break
-        s = out.strip()
-        i = s.find("{"); j = s.rfind("}")
-        if i >= 0 and j > i:
-            s = s[i:j + 1]
-        parsed = _json.loads(s)
+        parsed = await ai_json(sysmsg, parts, model=FINANCE_MODEL)
+        if not parsed:
+            return None
         printed = parsed.get("totals") if isinstance(parsed.get("totals"), dict) else {}
         has_printed = any(isinstance(printed.get(k), (int, float)) and printed.get(k) not in (None, 0)
                           for k in ("ativo_total", "vendas_e_servicos", "resultado_liquido", "passivo_total"))
@@ -408,12 +581,6 @@ async def extract_financial_document(data: bytes, content_type: str, filename: s
     except Exception as e:
         logger.error(f"extract_financial_document error: {e}")
         return None
-    finally:
-        if tmp:
-            try:
-                _os.unlink(tmp.name)
-            except Exception:
-                pass
 
 
 def rag(value, good, warn, reverse=False):
@@ -856,21 +1023,30 @@ async def build_system_prompt(user_id: str, user_name: str):
     docs_block = ("\n".join(_dlines) + (("\nNúmeros extraídos dos documentos: " + _json.dumps(_figs, ensure_ascii=False)) if _figs else "")) if _dlines else "(o empresário ainda não carregou relatórios ou documentos)"
     erp_ctx = await get_erp_financial_context(user_id, cid)
     if erp_ctx:
-        erp_fixed = ", ".join(f"{c.get('name')}: {c.get('amount')}" for c in (erp_ctx.get("fixed_costs") or [])[:6]) or "sem custos fixos detalhados"
+        erp_fixed = ", ".join(f"{c.get('name')}: {c.get('amount')}€" for c in (erp_ctx.get("fixed_costs") or [])[:6]) or "sem custos fixos detalhados"
+        works_info = erp_ctx.get("works_summary") or {}
+        budgets_info = erp_ctx.get("budgets_summary") or {}
+        exp_info = erp_ctx.get("expenses_breakdown") or {}
+        exp_txt = ", ".join(f"{k}: {v}€" for k, v in exp_info.items()) or "sem despesas discriminadas"
+        
         erp_block = (
-            f"Sistema: {erp_ctx.get('system_name') or 'ERP'}\n"
-            f"Fonte ativa: {erp_ctx.get('source_label') or 'Sistema de gestão'}\n"
-            f"Atualizado em: {erp_ctx.get('updated_at') or 'n/d'}\n"
-            f"Saldo atual: {erp_ctx.get('cash_balance', 'n/d')}\n"
-            f"Dívida total: {erp_ctx.get('total_debt', 'n/d')}\n"
-            f"Faturação mensal: {erp_ctx.get('monthly_revenue', 'n/d')}\n"
-            f"Custos fixos: {erp_fixed}\n"
-            f"Reestruturação de crédito: {_json.dumps(erp_ctx.get('credit_restructuring') or {}, ensure_ascii=False)}"
+            f"Sistema: {erp_ctx.get('system_name') or 'Obelisco Manager 360'}\n"
+            f"Fonte ativa: {erp_ctx.get('source_label') or 'Obelisco Manager · Nuvem 360°'}\n"
+            f"Última Sincronização: {erp_ctx.get('updated_at') or 'n/d'}\n"
+            f"• TESOURARIA & SALDO REAL: {erp_ctx.get('cash_balance', 'n/d')}€\n"
+            f"• FATURAÇÃO DO MÊS: {erp_ctx.get('monthly_revenue', 'n/d')}€ | EMITIDO NO ANO: {erp_ctx.get('annual_emitted_revenue', 'n/d')}€ (Meta 350.000€: {erp_ctx.get('annual_goal_progress_pct', 'n/d')}% concluído)\n"
+            f"• CONTAS A RECEBER: {erp_ctx.get('amount_to_receive', 0)}€ (Vencido em atraso: {erp_ctx.get('overdue_to_receive', 0)}€)\n"
+            f"• CONTAS A PAGAR: {erp_ctx.get('amount_to_pay', 0)}€ | DÍVIDA TOTAL: {erp_ctx.get('total_debt', 0)}€\n"
+            f"• CUSTOS FIXOS TOTAIS: {erp_ctx.get('total_fixed_costs', 0)}€/mês ({erp_fixed})\n"
+            f"• DESPESAS OPERACIONAIS DO MÊS: {exp_txt}\n"
+            f"• EQUIPA & FUNCIONÁRIOS: {erp_ctx.get('active_employees_count', 0)} colaboradores ativos (Custo Mensal da Folha Salarial: {erp_ctx.get('payroll_monthly_cost', 0)}€)\n"
+            f"• OBRAS & PROJETOS: {works_info.get('total_count', 0)} obras totais ({works_info.get('active_count', 0)} em curso, lucro estimado acumulado: {works_info.get('estimated_profit', 0)}€)\n"
+            f"• COMERCIAL & ORÇAMENTOS: {budgets_info.get('total_budgets', 0)} orçamentos emitidos ({budgets_info.get('total_proposals', 0)} propostas)"
         )
     else:
         erp_block = "(sem integração ativa com sistema de gestão)"
     return (
-        f"És o CEO AI — o Diretor Executivo Digital de {user_name}. NÃO és um chatbot nem um assistente técnico: "
+        f"És o CEO AI 2.0 — o Diretor Executivo Digital de {user_name}. NÃO és um chatbot nem um assistente técnico: "
         f"és um CEO experiente que já geriu centenas de empresas e que agora toma decisões LADO A LADO com este empresário. "
         f"A tua personalidade é experiente, calma, objectiva e confiante. {MODE_PROMPTS.get(mode, MODE_PROMPTS['crescimento'])} Tom: {tone}.\n\n"
         f"### COMO RESPONDES (obrigatório)\n"
@@ -905,19 +1081,284 @@ async def build_system_prompt(user_id: str, user_name: str):
         f"Sinais vitais:\n{vitals_txt}"
     )
 
+MODELS_CASCADE = ["gemini-3.5-flash", "gemini-3.5-flash-lite", "gemini-flash-latest", "gemini-3-flash-preview", "gemini-3.6-flash", "gemini-3.7-flash"]
+DEFAULT_LLM_MODEL = LITELLM_MODEL if LITELLM_API_KEY else "gemini-3.5-flash"
+FINANCE_MODEL = LITELLM_MODEL if LITELLM_API_KEY else "gemini-3.5-flash"
+
+PT_PT_INSTRUCTION = (
+    "\n\n[DIRETIVA DE LINGUAGEM E REVISÃO OBRIGATÓRIA - PORTUGUÊS DE PORTUGAL]\n"
+    "1. Todos os textos gerados (conteúdos de marketing, artigos do site, páginas, posts de redes sociais, emails, briefings, relatórios) "
+    "devem ser estritamente em Português de Portugal (Português Europeu - PT-PT).\n"
+    "2. Proibido usar gerúndios típicos do português do Brasil (usa 'estamos a fazer', 'a crescer', 'a planear' em vez de 'fazendo', 'crescendo', 'planejando').\n"
+    "3. Usa vocabulário europeu correto: 'equipa' (nunca 'equipe'), 'contacto' (nunca 'contato'), 'connosco' (nunca 'conosco'), 'utilizador' (nunca 'usuário'), "
+    "'publicar/partilhar' (nunca 'postar'), 'gerir' (nunca 'gerenciar'), 'planear' (nunca 'planejar'), 'ecrã' (nunca 'tela'), 'telemóvel' (nunca 'celular'), "
+    "'registo/registar' (nunca 'cadastro/cadastrar'), 'facturação/faturação', 'otimização/optimização'.\n"
+    "4. Revisão e Ortografia: Realiza uma revisão minuciosa para garantir acentuação perfeita e ZERO erros ortográficos ou gramaticais."
+)
+
+def sanitize_pt_pt(data):
+    """Garante limpeza e correção determinística de termos para Português de Portugal."""
+    if isinstance(data, str):
+        text = data
+        replacements = [
+            (r"\bequipe\b", "equipa"),
+            (r"\bEquipe\b", "Equipa"),
+            (r"\bequipes\b", "equipas"),
+            (r"\bEquipes\b", "Equipas"),
+            (r"\bcontato\b", "contacto"),
+            (r"\bContato\b", "Contacto"),
+            (r"\bcontatos\b", "contactos"),
+            (r"\bContatos\b", "Contactos"),
+            (r"\bconosco\b", "connosco"),
+            (r"\bConosco\b", "Connosco"),
+            (r"\busuário\b", "utilizador"),
+            (r"\bUsuário\b", "Utilizador"),
+            (r"\busuários\b", "utilizadores"),
+            (r"\bUsuários\b", "Utilizadores"),
+            (r"\bgerenciar\b", "gerir"),
+            (r"\bGerenciar\b", "Gerir"),
+            (r"\bplanejar\b", "planear"),
+            (r"\bPlanejar\b", "Planear"),
+            (r"\bplanejamento\b", "planeamento"),
+            (r"\bPlanejamento\b", "Planeamento"),
+            (r"\bpostar\b", "publicar"),
+            (r"\bPostar\b", "Publicar"),
+            (r"\bcadastre-se\b", "registe-se"),
+            (r"\bCadastre-se\b", "Registe-se"),
+            (r"\bcadastro\b", "registo"),
+            (r"\bCadastro\b", "Registo"),
+            (r"\bcelular\b", "telemóvel"),
+            (r"\bCelular\b", "Telemóvel"),
+        ]
+        import re
+        for pat, repl in replacements:
+            text = re.sub(pat, repl, text)
+        return text
+    elif isinstance(data, list):
+        return [sanitize_pt_pt(item) for item in data]
+    elif isinstance(data, dict):
+        return {k: sanitize_pt_pt(v) for k, v in data.items()}
+    return data
+
+async def call_litellm_text(system: str, prompt_or_contents, model: str = None) -> str:
+    """Chama o gateway LiteLLM através da interface compatível com OpenAI."""
+    if not LITELLM_API_KEY:
+        return ""
+    target_model = model or LITELLM_MODEL or "Gemini Auto Key"
+    full_system = (system or "") + PT_PT_INSTRUCTION
+    
+    if isinstance(prompt_or_contents, list):
+        user_text = " ".join([str(p) for p in prompt_or_contents if isinstance(p, str)])
+    else:
+        user_text = str(prompt_or_contents)
+        
+    messages = [
+        {"role": "system", "content": full_system},
+        {"role": "user", "content": user_text}
+    ]
+    
+    headers = {
+        "Authorization": f"Bearer {LITELLM_API_KEY}",
+        "Content-Type": "application/json",
+    }
+    payload = {
+        "model": target_model,
+        "messages": messages,
+        "temperature": 0.7,
+    }
+    endpoints = [
+        f"{LITELLM_BASE_URL}/chat/completions",
+        f"{LITELLM_BASE_URL}/v1/chat/completions",
+    ]
+    async with httpx.AsyncClient(timeout=45.0, verify=False) as client:
+        for ep in endpoints:
+            try:
+                res = await client.post(ep, json=payload, headers=headers)
+                if res.status_code == 200:
+                    data = res.json()
+                    choices = data.get("choices", [])
+                    if choices:
+                        content = choices[0].get("message", {}).get("content", "")
+                        if content:
+                            return sanitize_pt_pt(content.strip())
+                else:
+                    logger.warning(f"LiteLLM {ep} returned {res.status_code}: {res.text[:150]}")
+            except Exception as e:
+                logger.warning(f"LiteLLM call error on {ep}: {e}")
+                continue
+    return ""
+
+async def stream_litellm_chat(system_instruction: str, contents, model: str = None):
+    """Transmite a resposta do LiteLLM via SSE (OpenAI streaming)."""
+    if not LITELLM_API_KEY:
+        return
+    target_model = model or LITELLM_MODEL or "Gemini Auto Key"
+    full_system = (system_instruction or "") + PT_PT_INSTRUCTION
+    
+    if isinstance(contents, list):
+        user_text = " ".join([str(p) for p in contents if isinstance(p, str)])
+    else:
+        user_text = str(contents)
+        
+    messages = [
+        {"role": "system", "content": full_system},
+        {"role": "user", "content": user_text}
+    ]
+    headers = {
+        "Authorization": f"Bearer {LITELLM_API_KEY}",
+        "Content-Type": "application/json",
+    }
+    payload = {
+        "model": target_model,
+        "messages": messages,
+        "temperature": 0.7,
+        "stream": True,
+    }
+    endpoints = [
+        f"{LITELLM_BASE_URL}/chat/completions",
+        f"{LITELLM_BASE_URL}/v1/chat/completions",
+    ]
+    async with httpx.AsyncClient(timeout=60.0, verify=False) as client:
+        for ep in endpoints:
+            try:
+                async with client.stream("POST", ep, json=payload, headers=headers) as response:
+                    if response.status_code != 200:
+                        continue
+                    async for line in response.aiter_lines():
+                        line = line.strip()
+                        if not line:
+                            continue
+                        if line.startswith("data: "):
+                            data_str = line[6:].strip()
+                            if data_str == "[DONE]":
+                                break
+                            try:
+                                chunk_json = json.loads(data_str)
+                                choices = chunk_json.get("choices", [])
+                                if choices:
+                                    content = choices[0].get("delta", {}).get("content")
+                                    if content:
+                                        yield content
+                            except Exception:
+                                pass
+                    return
+            except Exception as e:
+                logger.warning(f"LiteLLM stream error on {ep}: {e}")
+                continue
+
+async def ai_text(system: str, prompt_or_contents, model: str = DEFAULT_LLM_MODEL) -> str:
+    # 1. Tentar primeiro o Gateway Central LiteLLM se configurado
+    if LITELLM_API_KEY:
+        try:
+            lit_res = await call_litellm_text(system, prompt_or_contents, model=model)
+            if lit_res:
+                return lit_res
+        except Exception as e:
+            logger.warning(f"LiteLLM gateway call error: {e}")
+
+    # 2. Fallback direto para Gemini se disponível
+    if not genai_client:
+        logger.error("Nenhum provedor de LLM configurado (LiteLLM / Gemini)")
+        return ""
+    full_system = (system or "") + PT_PT_INSTRUCTION
+    contents = prompt_or_contents if isinstance(prompt_or_contents, list) else [prompt_or_contents]
+    models_to_try = [model] + [m for m in MODELS_CASCADE if m != model]
+    for m in models_to_try:
+        try:
+            res = await genai_client.aio.models.generate_content(
+                model=m,
+                contents=contents,
+                config=types.GenerateContentConfig(
+                    system_instruction=full_system,
+                    temperature=0.7,
+                )
+            )
+            text = (getattr(res, "text", "") or "").strip()
+            if text:
+                return sanitize_pt_pt(text)
+        except Exception as e:
+            logger.warning(f"ai_text model {m} failed: {e}")
+            continue
+    return ""
+
+async def stream_gemini_chat(system_instruction: str, contents, model: str = DEFAULT_LLM_MODEL):
+    # 1. Tentar primeiro o Gateway Central LiteLLM se configurado
+    if LITELLM_API_KEY:
+        yielded_any = False
+        try:
+            async for chunk in stream_litellm_chat(system_instruction, contents, model=model):
+                yielded_any = True
+                yield chunk
+            if yielded_any:
+                return
+        except Exception as e:
+            logger.warning(f"LiteLLM stream error: {e}")
+
+    # 2. Fallback direto para Gemini se disponível
+    if not genai_client:
+        logger.error("Nenhum provedor de LLM configurado (LiteLLM / Gemini)")
+        yield " [Provedor de LLM não configurado. Verifique as credenciais.]"
+        return
+
+    full_system = (system_instruction or "") + PT_PT_INSTRUCTION
+    models_to_try = [model] + [m for m in MODELS_CASCADE if m != model]
+    
+    for m in models_to_try:
+        try:
+            response = await genai_client.aio.models.generate_content_stream(
+                model=m,
+                contents=contents,
+                config=types.GenerateContentConfig(
+                    system_instruction=full_system,
+                    temperature=0.7,
+                )
+            )
+            yielded_any = False
+            async for chunk in response:
+                if chunk.text:
+                    yielded_any = True
+                    yield chunk.text
+            if yielded_any:
+                return
+        except Exception as e:
+            logger.warning(f"stream_gemini_chat model {m} failed: {e}")
+            continue
+
+    yield " [Não foi possível gerar a resposta no momento. Tente novamente.]"
+
+class GeminiChatWrapper:
+    def __init__(self, system_instruction: str, model: str = DEFAULT_LLM_MODEL):
+        self.system_instruction = system_instruction
+        self.model = model
+
+    def _build_parts(self, user_msg):
+        text = user_msg if isinstance(user_msg, str) else getattr(user_msg, "text", str(user_msg))
+        parts = []
+        if hasattr(user_msg, "file_contents") and user_msg.file_contents:
+            for fc in user_msg.file_contents:
+                if hasattr(fc, "image_base64") and fc.image_base64:
+                    parts.append(types.Part.from_bytes(data=base64.b64decode(fc.image_base64), mime_type="image/png"))
+                elif hasattr(fc, "file_path") and fc.file_path:
+                    try:
+                        with open(fc.file_path, "rb") as f:
+                            parts.append(types.Part.from_bytes(data=f.read(), mime_type=getattr(fc, "mime_type", "application/pdf")))
+                    except Exception as e:
+                        logger.error(f"file part error: {e}")
+        parts.append(text)
+        return parts
+
+    async def send_message(self, user_msg) -> str:
+        parts = self._build_parts(user_msg)
+        return await ai_text(self.system_instruction, parts, model=self.model)
+
+    async def stream_message(self, user_msg):
+        parts = self._build_parts(user_msg)
+        async for chunk in stream_gemini_chat(self.system_instruction, parts, model=self.model):
+            yield TextDelta(chunk)
+
 async def get_chat(user_id: str, user_name: str, session_id: str, vision: bool = False):
     sysmsg = await build_system_prompt(user_id, user_name)
-    if vision:
-        return LlmChat(api_key=EMERGENT_KEY, session_id=session_id, system_message=sysmsg).with_model("openai", "gpt-5.4")
-    settings = await db.settings.find_one({"user_id": user_id}) or {}
-    provider, model = MODEL_MAP.get(settings.get("model", "claude"), MODEL_MAP["claude"])
-    if provider == "anthropic":
-        chat = LlmChat(api_key=EMERGENT_KEY, session_id=session_id, system_message=sysmsg,
-                       custom_headers={"anthropic-beta": "task-budgets-2026-03-13"}).with_model(provider, model)
-        chat = chat.with_params(extra_body={"output_config": {"task_budget": {"type": "tokens", "total": 200000}, "effort": "high"}}, max_tokens=8000)
-    else:
-        chat = LlmChat(api_key=EMERGENT_KEY, session_id=session_id, system_message=sysmsg).with_model(provider, model)
-    return chat
+    return GeminiChatWrapper(system_instruction=sysmsg, model=DEFAULT_LLM_MODEL)
 
 async def make_briefing(user_id: str, user_name: str):
     settings = await db.settings.find_one({"user_id": user_id}) or {}
@@ -932,19 +1373,12 @@ async def make_briefing(user_id: str, user_name: str):
         f"Exatamente {count} itens, priorizados pelo que mais importa hoje. "
         f"O greeting deve ser uma frase humana e calorosa a começar com '{greeting}'. Detalhes curtos, orientados ao futuro e à ação. Sem texto fora do JSON."
     )
-    chat = LlmChat(api_key=EMERGENT_KEY, session_id=f"brief-{uuid.uuid4()}", system_message=sysmsg).with_model("openai", "gpt-5.4")
-    try:
-        resp = await chat.send_message(UserMessage(text=prompt))
-        text = resp.strip()
-        if "```" in text:
-            text = text.split("```")[1].replace("json", "", 1).strip()
-        data = json.loads(text)
-    except Exception as e:
-        logger.error(f"briefing error: {e}")
+    data = await ai_json(sysmsg, prompt, model=DEFAULT_LLM_MODEL)
+    if not data or not isinstance(data, dict):
         data = {"greeting": f"{greeting}, {user_name}. Aqui está o que precisa da sua atenção hoje.",
                 "items": [{"title": "Ligue os seus dados", "detail": "Registe receitas e despesas para eu analisar a saúde da sua empresa.",
                            "priority": "alta", "icon": "opportunity"}]}
-    data["health"] = snap["health"]
+    data["health"] = snap.get("health", 0)
     return data
 
 PRIORITY_COLOR = {"alta": "#EF4444", "media": "#F59E0B", "baixa": "#10B981"}
@@ -978,7 +1412,7 @@ def build_briefing_html(name: str, data: dict, app_url: str):
             <div style="font-size:13px;color:#71717a;margin-bottom:22px;">Saúde da empresa: <strong style="color:#D4AF37;">{data.get('health',0)}/100</strong></div>
             <table width="100%" cellpadding="0" cellspacing="0">{rows}</table>
             <table width="100%" cellpadding="0" cellspacing="0" style="margin-top:22px;"><tr><td align="center">
-              <a href="{app_url}" style="display:inline-block;background:#D4AF37;color:#0b0c10;text-decoration:none;font-weight:700;font-size:14px;padding:13px 28px;border-radius:999px;">Abrir o meu CEO AI</a>
+              <a href="{app_url}" style="display:inline-block;background:#D4AF37;color:#0b0c10;text-decoration:none;font-weight:700;font-size:14px;padding:13px 28px;border-radius:999px;">Abrir o meu CEO AI 2.0</a>
             </td></tr></table>
           </td></tr>
           <tr><td style="padding:20px 32px;background:#faf9f6;border-top:1px solid #eee;">
@@ -989,19 +1423,65 @@ def build_briefing_html(name: str, data: dict, app_url: str):
     </table></body></html>"""
 
 async def send_email_raw(to_email: str, subject: str, html: str):
-    if not EMAIL_KEY:
-        logger.error("EMERGENT_EMAIL_KEY not set")
-        return False
-    payload = {"to": [to_email], "subject": subject, "html": html, "from_name": EMAIL_FROM_NAME}
-    try:
-        async with httpx.AsyncClient(timeout=30) as client:
-            resp = await client.post(f"{EMAIL_BASE_URL}/api/v1/email/send",
-                                     headers={"X-Email-Key": EMAIL_KEY}, json=payload)
-        resp.raise_for_status()
-        return True
-    except Exception as e:
-        logger.error(f"email send error: {e}")
-        return False
+    smtp_host = os.environ.get("SMTP_HOST")
+    if smtp_host:
+        try:
+            import smtplib
+            from email.mime.multipart import MIMEMultipart
+            from email.mime.text import MIMEText
+            
+            smtp_port = int(os.environ.get("SMTP_PORT", 587))
+            smtp_user = os.environ.get("SMTP_USER", "")
+            smtp_pass = os.environ.get("SMTP_PASSWORD", "")
+            from_email = os.environ.get("SMTP_FROM", smtp_user or "noreply@ceoai.local")
+            
+            msg = MIMEMultipart("alternative")
+            msg["Subject"] = subject
+            msg["From"] = f"{EMAIL_FROM_NAME} <{from_email}>"
+            msg["To"] = to_email
+            msg.attach(MIMEText(html, "html"))
+            
+            def _send_smtp():
+                with smtplib.SMTP(smtp_host, smtp_port, timeout=20) as server:
+                    if os.environ.get("SMTP_USE_TLS", "true").lower() in ("true", "1"):
+                        server.starttls()
+                    if smtp_user and smtp_pass:
+                        server.login(smtp_user, smtp_pass)
+                    server.sendmail(from_email, [to_email], msg.as_string())
+            
+            await asyncio.to_thread(_send_smtp)
+            logger.info(f"Email sent via SMTP to {to_email}: {subject}")
+            return True
+        except Exception as e:
+            logger.error(f"SMTP send error: {e}")
+            return False
+            
+    resend_key = os.environ.get("RESEND_API_KEY")
+    if resend_key:
+        try:
+            from_email = os.environ.get("RESEND_FROM", "onboarding@resend.dev")
+            payload = {
+                "from": f"{EMAIL_FROM_NAME} <{from_email}>",
+                "to": [to_email],
+                "subject": subject,
+                "html": html,
+            }
+            async with httpx.AsyncClient(timeout=30) as client:
+                resp = await client.post(
+                    "https://api.resend.com/emails",
+                    headers={"Authorization": f"Bearer {resend_key}", "Content-Type": "application/json"},
+                    json=payload
+                )
+            resp.raise_for_status()
+            logger.info(f"Email sent via Resend to {to_email}: {subject}")
+            return True
+        except Exception as e:
+            logger.error(f"Resend send error: {e}")
+            return False
+
+    # Dev/Local Mode: Log email safely
+    logger.info(f"[DEV EMAIL] To: {to_email} | Subject: {subject} | Body length: {len(html)} bytes")
+    return True
 
 # ---------------------------------------------------------------- password reset
 def hash_reset_token(token: str) -> str:
@@ -1021,8 +1501,8 @@ async def create_password_reset(user_id: str) -> str:
 def build_reset_password_html(name: str, link: str) -> str:
     who = f", {name}" if name else ""
     return (f"<div style='font-family:Arial,sans-serif;max-width:560px;margin:auto;padding:24px'>"
-            f"<h2 style='color:#0b0c10'>Redefinicao de senha - CEO AI</h2>"
-            f"<p>Ola{who}, recebemos um pedido para redefinir a senha da tua conta CEO AI.</p>"
+            f"<h2 style='color:#0b0c10'>Redefinicao de senha - CEO AI 2.0</h2>"
+            f"<p>Ola{who}, recebemos um pedido para redefinir a senha da tua conta CEO AI 2.0.</p>"
             f"<p style='margin:24px 0'><a href='{link}' style='display:inline-block;background:#3B82F6;color:#fff;text-decoration:none;font-weight:700;font-size:14px;padding:13px 28px;border-radius:999px;'>Definir nova senha</a></p>"
             f"<p style='font-size:13px;color:#71717a'>Esta ligacao e valida por 1 hora e so pode ser usada uma vez. Se nao pediste esta alteracao, ignora este email.</p>"
             f"<p style='font-size:12px;color:#a1a1aa;word-break:break-all'>{link}</p>"
@@ -1033,7 +1513,7 @@ async def send_password_reset_email(user_doc: dict) -> bool:
     frontend = os.environ.get("FRONTEND_URL", "").rstrip("/")
     link = f"{frontend}/reset-password?token={raw}"
     html = build_reset_password_html(user_doc.get("name", ""), link)
-    return await send_email_raw(user_doc.get("email", ""), "Redefinicao de senha - CEO AI", html)
+    return await send_email_raw(user_doc.get("email", ""), "Redefinicao de senha - CEO AI 2.0", html)
 
 
 async def send_daily_briefings():
@@ -1054,7 +1534,7 @@ async def send_daily_briefings():
                 continue
             data = await make_briefing(uid, u.get("name", ""))
             html = build_briefing_html(u.get("name", ""), data, os.environ.get("FRONTEND_URL", ""))
-            await send_email_raw(u["email"], "O teu briefing diário — CEO AI", html)
+            await send_email_raw(u["email"], "O teu briefing diário — CEO AI 2.0", html)
         except Exception as e:
             logger.error(f"daily briefing error for {uid}: {e}")
 
@@ -1116,7 +1596,7 @@ def build_value_alert_html(name: str, alert: dict, app_url: str):
             </td></tr></table>
           </td></tr>
           <tr><td style="padding:20px 32px;background:#faf9f6;border-top:1px solid #eee;">
-            <div style="font-size:11px;color:#a1a1aa;">Recebes este resumo mensal do valor da tua empresa do CEO AI. Podes desativar em Personalização.</div>
+            <div style="font-size:11px;color:#a1a1aa;">Recebes este resumo mensal do valor da tua empresa do CEO AI 2.0. Podes desativar em Personalização.</div>
           </td></tr>
         </table>
       </td></tr>
@@ -1145,8 +1625,8 @@ async def send_monthly_value_alerts():
             if not u or not u.get("email"):
                 continue
             html = build_value_alert_html(u.get("name", ""), alert, os.environ.get("FRONTEND_URL", ""))
-            subj = ("O valor da tua empresa subiu este mês — CEO AI" if alert["direction"] == "up"
-                    else "O valor da tua empresa mudou este mês — CEO AI")
+            subj = ("O valor da tua empresa subiu este mês — CEO AI 2.0" if alert["direction"] == "up"
+                    else "O valor da tua empresa mudou este mês — CEO AI 2.0")
             await send_email_raw(u["email"], subj, html)
             try:
                 await send_push_to_user(uid, subj, f"A tua empresa vale {alert['currency_symbol']}{int(round(alert['current']))}", "/valor")
@@ -1172,7 +1652,7 @@ def build_goal_alert_html(name: str, sym: str, current: float, target: float, pc
       <tr><td align="center">
         <table width="600" cellpadding="0" cellspacing="0" style="background:#ffffff;border-radius:18px;overflow:hidden;">
           <tr><td style="background:#0b0c10;padding:28px 32px;">
-            <div style="color:#3B82F6;font-size:22px;font-weight:700;letter-spacing:1px;">CEO&nbsp;AI</div>
+            <div style="color:#3B82F6;font-size:22px;font-weight:700;letter-spacing:1px;">CEO&nbsp;AI&nbsp;2.0</div>
             <div style="color:#a1a1aa;font-size:11px;letter-spacing:2px;text-transform:uppercase;margin-top:2px;">Executivo Digital · Meta de Valor</div>
           </td></tr>
           <tr><td style="padding:32px;">
@@ -1243,8 +1723,8 @@ async def send_goal_alerts():
                 continue
             html = build_goal_alert_html(u.get("name", ""), prog["currency_symbol"], prog["current"],
                                          prog["target"], pct, reached, os.environ.get("FRONTEND_URL", ""))
-            subj = ("Atingiste a tua meta de valor — CEO AI" if reached
-                    else "Estás quase a atingir a tua meta de valor — CEO AI")
+            subj = ("Atingiste a tua meta de valor — CEO AI 2.0" if reached
+                    else "Estás quase a atingir a tua meta de valor — CEO AI 2.0")
             await send_email_raw(u["email"], subj, html)
             try:
                 await send_push_to_user(uid, subj, f"Valor atual {prog['currency_symbol']}{int(round(prog['current']))} de {prog['currency_symbol']}{int(round(prog['target']))}", "/meta")
@@ -1298,17 +1778,51 @@ async def send_push_to_user(user_id: str, title: str, body: str, url: str = "/",
             await db.push_subscriptions.delete_one({"_id": s["_id"]})
     return sent
 
-async def ai_json(system: str, prompt: str, model=("openai", "gpt-5.4")):
-    chat = LlmChat(api_key=EMERGENT_KEY, session_id=f"j-{uuid.uuid4()}", system_message=system).with_model(*model)
-    try:
-        resp = await chat.send_message(UserMessage(text=prompt))
-        t = resp.strip()
-        if "```" in t:
-            t = t.split("```")[1].replace("json", "", 1).strip()
-        return json.loads(t)
-    except Exception as e:
-        logger.error(f"ai_json error: {e}")
+async def ai_json(system: str, prompt_or_contents, model: str = DEFAULT_LLM_MODEL):
+    # 1. Tentar primeiro via LiteLLM se configurado
+    if LITELLM_API_KEY:
+        try:
+            json_system = (system or "") + "\nResponde APENAS com um objeto JSON válido, sem texto extra nem markdown."
+            raw_text = await call_litellm_text(json_system, prompt_or_contents, model=model)
+            if raw_text:
+                t = raw_text.strip()
+                if "```" in t:
+                    t = t.split("```")[1].replace("json", "", 1).strip()
+                parsed = json.loads(t)
+                return sanitize_pt_pt(parsed)
+        except Exception as e:
+            logger.warning(f"ai_json LiteLLM failed: {e}")
+
+    # 2. Fallback direto para Gemini se disponível
+    if not genai_client:
+        logger.error("Nenhum provedor de LLM configurado (LiteLLM / Gemini)")
         return None
+    if isinstance(model, (list, tuple)):
+        model = DEFAULT_LLM_MODEL
+    full_system = (system or "") + PT_PT_INSTRUCTION
+    contents = prompt_or_contents if isinstance(prompt_or_contents, list) else [prompt_or_contents]
+    models_to_try = [model] + [m for m in MODELS_CASCADE if m != model]
+    for m in models_to_try:
+        try:
+            res = await genai_client.aio.models.generate_content(
+                model=m,
+                contents=contents,
+                config=types.GenerateContentConfig(
+                    system_instruction=full_system,
+                    response_mime_type="application/json",
+                    temperature=0.3,
+                )
+            )
+            t = (getattr(res, "text", "") or "").strip()
+            if "```" in t:
+                t = t.split("```")[1].replace("json", "", 1).strip()
+            if t:
+                parsed = json.loads(t)
+                return sanitize_pt_pt(parsed)
+        except Exception as e:
+            logger.warning(f"ai_json model {m} failed: {e}")
+            continue
+    return None
 
 async def cached_ai(kind: str, uid: str, cid, system: str, prompt: str):
     today = datetime.now(timezone.utc).date().isoformat()
@@ -1316,7 +1830,7 @@ async def cached_ai(kind: str, uid: str, cid, system: str, prompt: str):
     hit = await db.ai_cache.find_one(q)
     if hit and hit.get("payload"):
         return hit["payload"]
-    payload = await ai_json(system, prompt)
+    payload = await ai_json(system, prompt, model=DEFAULT_LLM_MODEL)
     if payload:
         await db.ai_cache.update_one(q, {"$set": {"payload": payload, "created_at": datetime.now(timezone.utc).isoformat()}}, upsert=True)
     return payload

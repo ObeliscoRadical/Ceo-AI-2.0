@@ -3,6 +3,7 @@ import { useLocation, useNavigate } from "react-router-dom";
 import { api, streamChat } from "@/lib/api";
 import { VoiceSphere } from "@/components/VoiceSphere";
 import { CEOOrb } from "@/components/CEOOrb";
+import { CEOHumanoidReactor } from "@/components/CEOHumanoidReactor";
 import { VoiceMode } from "@/components/VoiceMode";
 import { Input } from "@/components/ui/input";
 import { Button } from "@/components/ui/button";
@@ -137,18 +138,18 @@ export default function Chat() {
       {/* Chat area */}
       <div className="flex-1 flex flex-col max-w-3xl mx-auto px-6 w-full">
         {messages.length === 0 ? (
-          <div className="flex-1 flex flex-col items-center justify-center text-center">
-            <CEOOrb size={170} />
-            <h1 className="font-serif-lux text-4xl md:text-5xl mt-8 mb-3">O teu CEO está a ouvir.</h1>
+          <div className="flex-1 flex flex-col items-center justify-center text-center py-6">
+            <CEOHumanoidReactor size={350} isSpeaking={streaming} amplitude={streaming ? 0.7 : 0} className="mb-2" />
+            <h1 className="font-serif-lux text-4xl md:text-5xl mt-4 mb-3">O teu CEO está a ouvir.</h1>
             <p className="text-muted-foreground mb-8 max-w-md">Estou pronto a analisar a tua empresa e a decidir contigo. Expõe a situação — respondo como um sócio experiente, sem termos técnicos.</p>
             <Button data-testid="open-voice-btn" onClick={() => setVoiceOpen(true)}
-              className="rounded-full mb-10 h-12 px-7 bg-[#3B82F6] text-white hover:bg-[#2563EB] text-base">
-              <Mic className="w-5 h-5 mr-2" /> Falar com o CEO
+              className="rounded-full mb-10 h-12 px-7 bg-[#00F0FF]/15 text-[#00F0FF] hover:bg-[#00F0FF]/25 border border-[#00F0FF]/40 text-base shadow-[0_0_20px_rgba(0,240,255,0.2)]">
+              <Mic className="w-5 h-5 mr-2 text-[#00F0FF]" /> Falar com o CEO
             </Button>
             <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 w-full max-w-lg">
               {SUGGESTIONS.map((s, i) => (
                 <button key={i} data-testid={`suggestion-${i}`} onClick={() => send(s)}
-                  className="text-left text-sm p-4 rounded-xl border border-border hover:border-[#3B82F6]/50 hover:bg-accent transition-colors">
+                  className="text-left text-sm p-4 rounded-xl border border-border hover:border-[#00F0FF]/50 hover:bg-accent transition-colors">
                   {s}
                 </button>
               ))}
@@ -159,9 +160,13 @@ export default function Chat() {
             {messages.map((m, i) => (
               <motion.div key={i} initial={{ opacity: 0, y: 6 }} animate={{ opacity: 1, y: 0 }}
                 className={`flex ${m.role === "user" ? "justify-end" : "justify-start"}`} data-testid={`msg-${m.role}-${i}`}>
-                {m.role === "assistant" && <div className="w-8 h-8 rounded-full bg-[#3B82F6]/20 shrink-0 mr-3 flex items-center justify-center"><div className="w-3 h-3 rounded-full bg-[#3B82F6]" /></div>}
+                {m.role === "assistant" && (
+                  <div className="w-9 h-9 rounded-full bg-[#00F0FF]/15 border border-[#00F0FF]/30 shrink-0 mr-3 flex items-center justify-center overflow-hidden shadow-[0_0_10px_rgba(0,240,255,0.2)]">
+                    <CEOHumanoidReactor size={42} isSpeaking={streaming && i === messages.length - 1} amplitude={0.5} />
+                  </div>
+                )}
                 <div className={`max-w-[80%] px-5 py-3.5 rounded-2xl text-sm leading-relaxed whitespace-pre-wrap ${m.role === "user" ? "bg-[#3B82F6] text-white" : "surface"}`}>
-                  {m.content || <Loader2 className="w-4 h-4 animate-spin" />}
+                  {m.content || <Loader2 className="w-4 h-4 animate-spin text-[#00F0FF]" />}
                 </div>
               </motion.div>
             ))}

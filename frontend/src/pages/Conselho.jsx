@@ -124,7 +124,7 @@ export default function Conselho() {
 
   return (
     <div className="px-6 md:px-16 py-14 md:py-20 max-w-[1200px] mx-auto" data-testid="council-page">
-      <p className="text-xs uppercase tracking-[0.25em] text-muted-foreground mb-3">CEO AI · Conselho Executivo Digital</p>
+      <p className="text-xs uppercase tracking-[0.25em] text-muted-foreground mb-3">CEO AI 2.0 · Conselho Executivo Digital</p>
       <div className="flex items-end justify-between flex-wrap gap-4 mb-10">
         <div>
           <h1 className="font-serif-lux text-4xl md:text-5xl text-[#3B82F6] flex items-center gap-3">

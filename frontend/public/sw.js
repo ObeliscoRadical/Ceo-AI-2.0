@@ -1,6 +1,6 @@
-// CEO AI service worker — push com botões de ação (v2)
+// CEO AI 2.0 service worker — push com botões de ação (v2)
 self.addEventListener('push', (event) => {
-  let data = { title: 'CEO AI', body: '', url: '/' };
+  let data = { title: 'CEO AI 2.0', body: '', url: '/' };
   try { data = event.data ? event.data.json() : data; } catch (e) {}
   const options = {
     body: data.body || '',
@@ -9,7 +9,7 @@ self.addEventListener('push', (event) => {
     data: { url: data.url || '/', notif_id: data.notif_id || null },
     actions: Array.isArray(data.actions) ? data.actions : [],
   };
-  event.waitUntil(self.registration.showNotification(data.title || 'CEO AI', options));
+  event.waitUntil(self.registration.showNotification(data.title || 'CEO AI 2.0', options));
 });
 
 self.addEventListener('notificationclick', (event) => {

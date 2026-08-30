@@ -63,15 +63,9 @@ async def import_csv(file: UploadFile = File(...), user: dict = Depends(get_curr
         "Interpreta colunas em qualquer idioma. Valores negativos ou palavras como despesa/custo/pagamento => expense; "
         "receita/venda/entrada => income. Não incluas texto fora do JSON.\n\nCSV:\n" + raw[:6000]
     )
-    chat = LlmChat(api_key=EMERGENT_KEY, session_id=f"import-{uuid.uuid4()}",
-                   system_message="És um analista financeiro que estrutura dados. Respondes só com JSON.").with_model("openai", "gpt-5.4")
-    resp = await chat.send_message(UserMessage(text=prompt))
-    text = resp.strip()
-    if "```" in text:
-        text = text.split("```")[1].replace("json", "", 1).strip()
-    try:
-        rows = json.loads(text)
-    except Exception:
+    sysmsg = "És um analista financeiro que estrutura dados. Respondes só com JSON."
+    rows = await ai_json(sysmsg, prompt, model="gemini-3.7-flash")
+    if rows is None:
         raise HTTPException(status_code=422, detail="Não foi possível interpretar o ficheiro")
     inserted = 0
     for r in rows if isinstance(rows, list) else []:
@@ -148,8 +142,8 @@ async def value_alert_email(user: dict = Depends(get_current_user)):
     if not u or not u.get("email"):
         raise HTTPException(status_code=400, detail="Esta conta não tem email associado")
     html = build_value_alert_html(u.get("name", ""), alert, os.environ.get("FRONTEND_URL", ""))
-    subj = ("O valor da tua empresa subiu este mês — CEO AI" if alert["direction"] == "up"
-            else "O valor da tua empresa mudou este mês — CEO AI")
+    subj = ("O valor da tua empresa subiu este mês — CEO AI 2.0" if alert["direction"] == "up"
+            else "O valor da tua empresa mudou este mês — CEO AI 2.0")
     ok = await send_email_raw(u["email"], subj, html)
     if not ok:
         raise HTTPException(status_code=502, detail="Não foi possível enviar o email")

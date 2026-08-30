@@ -45,7 +45,7 @@ export default function MetaShare() {
             <LineChart className="w-5 h-5 text-white" />
           </div>
           <div>
-            <div className="font-serif-lux text-lg leading-none">CEO AI</div>
+            <div className="font-serif-lux text-lg leading-none">CEO AI 2.0</div>
             <div className="text-[10px] uppercase tracking-[0.22em] text-muted-foreground mt-0.5">Diretor Executivo Digital</div>
           </div>
         </div>
@@ -142,7 +142,7 @@ export default function MetaShare() {
 
         <p className="text-[11px] text-muted-foreground">
           {updated && <>Atualizado a {updated}. </>}
-          Esta projeção é uma estimativa estratégica baseada nos dados da empresa e não constitui uma avaliação financeira, contabilística ou jurídica independente. Gerado pelo CEO AI.
+          Esta projeção é uma estimativa estratégica baseada nos dados da empresa e não constitui uma avaliação financeira, contabilística ou jurídica independente. Gerado pelo CEO AI 2.0.
         </p>
       </div>
     </div>

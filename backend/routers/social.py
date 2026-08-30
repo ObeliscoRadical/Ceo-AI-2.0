@@ -1172,7 +1172,8 @@ async def _store_public_image(uid: str, cid: Optional[str], data: bytes, ct: str
     await db.social_media.insert_one({"_id": mid, "user_id": uid, "company_id": cid,
                                       "data": base64.b64encode(data).decode(), "content_type": ct,
                                       "created_at": datetime.now(timezone.utc).isoformat()})
-    return f"{_base()}/api/public/media/{mid}"
+    backend_port = os.environ.get("PORT", "8001")
+    return f"http://localhost:{backend_port}/api/public/media/{mid}"
 
 
 @router.get("/public/media/{mid}")
@@ -1180,7 +1181,12 @@ async def public_media(mid: str):
     doc = await db.social_media.find_one({"_id": mid})
     if not doc:
         raise HTTPException(404, "não encontrado")
-    return Response(content=base64.b64decode(doc["data"]), media_type=doc.get("content_type", "image/png"))
+    raw_data = base64.b64decode(doc["data"])
+    headers = {
+        "Cache-Control": "public, max-age=86400",
+        "Access-Control-Allow-Origin": "*",
+    }
+    return Response(content=raw_data, media_type=doc.get("content_type", "image/png"), headers=headers)
 
 
 # ---------------------------------------------------------------- estado / ligação

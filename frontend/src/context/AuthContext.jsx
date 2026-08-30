@@ -24,20 +24,29 @@ export function AuthProvider({ children }) {
 
   const login = async (email, password) => {
     const { data } = await api.post("/auth/login", { email, password });
-    await refresh();
-    return data;
+    if (data?.token) {
+      localStorage.setItem("access_token", data.token);
+    }
+    const freshUser = await refresh();
+    return freshUser || data;
   };
   const register = async (name, email, password) => {
     const { data } = await api.post("/auth/register", { name, email, password });
-    await refresh();
-    return data;
+    if (data?.token) {
+      localStorage.setItem("access_token", data.token);
+    }
+    const freshUser = await refresh();
+    return freshUser || data;
   };
   const googleSession = async (sessionId) => {
     await api.post("/auth/session", {}, { headers: { "X-Session-ID": sessionId } });
     return refresh();
   };
   const logout = async () => {
-    await api.post("/auth/logout");
+    try {
+      await api.post("/auth/logout");
+    } catch {}
+    localStorage.removeItem("access_token");
     setUser(false);
   };
 

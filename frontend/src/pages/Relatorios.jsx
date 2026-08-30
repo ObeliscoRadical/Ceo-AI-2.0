@@ -11,7 +11,7 @@ export default function Relatorios() {
   if (!data) return (
     <div className="flex flex-col items-center justify-center py-40 gap-4">
       <Loader2 className="w-6 h-6 animate-spin text-[#3B82F6]" />
-      <p className="text-sm text-muted-foreground">O CEO AI está a preparar o teu relatório estratégico...</p>
+      <p className="text-sm text-muted-foreground">O CEO AI 2.0 está a preparar o teu relatório estratégico...</p>
     </div>
   );
   const sym = data.currency_symbol || "€";

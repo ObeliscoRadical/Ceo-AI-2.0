@@ -123,7 +123,7 @@ async def _run_director(key: str, ctx_text: str, sym: str):
 
 async def _run_brain(ctx_text: str, directors: dict, sym: str):
     system = (
-        "És o Cérebro Orquestrador (CEO AI) de um conselho executivo digital. Recebes as análises dos "
+        "És o Cérebro Orquestrador (CEO AI 2.0) de um conselho executivo digital. Recebes as análises dos "
         "Diretores Financeiro, Comercial e de Marketing e cruzas tudo numa ÚNICA estratégia recomendada, "
         "coerente e priorizada, para a empresa executar hoje. Português europeu."
     )

@@ -101,7 +101,7 @@ def _get_portal_config():
     if cfgs:
         return cfgs[0].id
     cfg = stripe.billing_portal.Configuration.create(
-        business_profile={"headline": "CEO AI — Gestão da subscrição"},
+        business_profile={"headline": "CEO AI 2.0 — Gestão da subscrição"},
         features={
             "invoice_history": {"enabled": True},
             "payment_method_update": {"enabled": True},

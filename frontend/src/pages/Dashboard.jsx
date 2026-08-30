@@ -51,7 +51,7 @@ export default function Dashboard() {
         <CEOOrb size={130} mood={snap ? moodFromHealth(snap.health) : "gold"} className="shrink-0" />
         <div className="flex-1 min-w-0">
           {briefLoading ? (
-            <div className="flex items-center gap-3 text-muted-foreground"><Loader2 className="w-5 h-5 animate-spin" /> O CEO AI está a preparar o seu briefing...</div>
+            <div className="flex items-center gap-3 text-muted-foreground"><Loader2 className="w-5 h-5 animate-spin" /> O CEO AI 2.0 está a preparar o seu briefing...</div>
           ) : (
             <>
               <motion.h1 initial={{ opacity: 0, y: 8 }} animate={{ opacity: 1, y: 0 }} className="font-serif-lux text-3xl md:text-4xl leading-tight mb-6" data-testid="briefing-greeting">
@@ -77,7 +77,7 @@ export default function Dashboard() {
               </div>
               <button onClick={() => navigate("/ceo")} data-testid="ask-ceo-btn"
                 className="mt-6 inline-flex items-center gap-2 text-sm text-[#3B82F6] hover:gap-3 transition-all">
-                <MessageSquare className="w-4 h-4" /> Falar com o CEO AI
+                <MessageSquare className="w-4 h-4" /> Falar com o CEO AI 2.0
               </button>
             </>
           )}

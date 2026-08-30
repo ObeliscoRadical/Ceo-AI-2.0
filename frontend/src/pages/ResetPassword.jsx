@@ -45,7 +45,7 @@ export default function ResetPassword() {
         <div className="flex justify-center mb-6">
           <div className="relative flex items-center justify-center" style={{ width: 96, height: 96 }}>
             <div className="absolute inset-3 rounded-full" style={{ background: "radial-gradient(circle, rgba(59,130,246,0.4), transparent 70%)", filter: "blur(16px)" }} />
-            <img src="/android_cut.png" alt="CEO AI" className="relative w-full h-full object-contain" />
+            <img src="/android_cut.png" alt="CEO AI 2.0" className="relative w-full h-full object-contain" />
           </div>
         </div>
         {checking ? (

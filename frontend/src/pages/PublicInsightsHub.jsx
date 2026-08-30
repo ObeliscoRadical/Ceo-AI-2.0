@@ -9,7 +9,7 @@ export default function PublicInsightsHub() {
   const [loading, setLoading] = useState(true);
 
   useEffect(() => {
-    applyPublicSeo({ title: "Insights | CEO AI", description: "Hub público de conteúdos publicados autonomamente pelo agente de Growth.", canonicalPath: "/insights" });
+    applyPublicSeo({ title: "Insights | CEO AI 2.0", description: "Hub público de conteúdos publicados autonomamente pelo agente de Growth.", canonicalPath: "/insights" });
     trackPublicSurface("insights-hub", "/insights", "Insights").catch(() => {});
     fetchPublicEntries("article")
       .then(setEntries)
@@ -21,7 +21,7 @@ export default function PublicInsightsHub() {
     <div className="min-h-screen bg-[#05050A] text-white grain">
       <div className="max-w-[1100px] mx-auto px-6 py-14 md:py-20">
         <Link to="/login" className="inline-flex items-center gap-2 text-sm text-slate-400 hover:text-[#3B82F6] transition-colors mb-8" data-testid="public-insights-back-link">
-          <ArrowLeft className="w-4 h-4" /> Voltar ao CEO AI
+          <ArrowLeft className="w-4 h-4" /> Voltar ao CEO AI 2.0
         </Link>
 
         <div className="max-w-3xl mb-12">
@@ -30,7 +30,7 @@ export default function PublicInsightsHub() {
             Insights publicados pelo agente de Crescimento Orgânico
           </h1>
           <p className="text-sm md:text-lg text-slate-300 leading-8" data-testid="public-insights-description">
-            Conteúdos públicos criados e atualizados diretamente pela infraestrutura atual do CEO AI, sem CMS externo.
+            Conteúdos públicos criados e atualizados diretamente pela infraestrutura atual do CEO AI 2.0, sem CMS externo.
           </p>
         </div>
 

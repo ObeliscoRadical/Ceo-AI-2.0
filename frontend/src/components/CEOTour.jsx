@@ -53,7 +53,7 @@ export function CEOTour() {
 
   const steps = [
     {
-      key: "welcome", center: true, title: "👋 Bem-vindo ao CEO AI",
+      key: "welcome", center: true, title: "👋 Bem-vindo ao CEO AI 2.0",
       body: `Olá, ${firstName}. Eu sou o teu Diretor Executivo Digital.\nA minha missão é ajudar-te a tomar melhores decisões para a tua empresa.\nEm menos de 2 minutos mostro-te como.`,
       cta: "Começar",
     },

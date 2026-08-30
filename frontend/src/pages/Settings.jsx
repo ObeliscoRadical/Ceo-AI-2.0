@@ -110,7 +110,7 @@ export default function Settings() {
     const { data } = await api.post("/memories", { content: newMem, category: "geral" });
     setMemories((m) => [{ id: data.id, content: newMem, category: "geral" }, ...m]);
     setNewMem("");
-    toast.success("O CEO AI vai lembrar-se disto.");
+    toast.success("O CEO AI 2.0 vai lembrar-se disto.");
   };
   const delMem = async (id) => { await api.delete(`/memories/${id}`); setMemories((m) => m.filter((x) => x.id !== id)); };
 
@@ -186,7 +186,7 @@ export default function Settings() {
 
       <div className="surface rounded-3xl p-8 mb-6">
         <div className="flex items-center gap-2 mb-1"><Building2 className="w-5 h-5 text-[#3B82F6]" /><h2 className="font-serif-lux text-2xl">A tua empresa</h2></div>
-        <p className="text-muted-foreground text-sm mb-6">Esta informação alimenta todas as análises do CEO AI (saúde, valor, conselhos e relatórios).</p>
+        <p className="text-muted-foreground text-sm mb-6">Esta informação alimenta todas as análises do CEO AI 2.0 (saúde, valor, conselhos e relatórios).</p>
 
         <div className="rounded-2xl border border-[#3B82F6]/25 p-5 mb-8" data-testid="import-card">
           <p className="text-sm font-medium mb-1">Preencher automaticamente</p>
@@ -341,7 +341,7 @@ export default function Settings() {
 
       <div className="surface rounded-3xl p-8 mb-6">
         <div className="flex items-center gap-2 mb-2"><Mail className="w-5 h-5 text-[#3B82F6]" /><h2 className="font-serif-lux text-2xl">Briefing por email</h2></div>
-        <p className="text-muted-foreground text-sm mb-6">O CEO AI acorda contigo: recebe o briefing diário no email às 07:00 (UTC), mesmo sem abrir a app.</p>
+        <p className="text-muted-foreground text-sm mb-6">O CEO AI 2.0 acorda contigo: recebe o briefing diário no email às 07:00 (UTC), mesmo sem abrir a app.</p>
         <div className="flex items-center justify-between p-4 rounded-xl border border-border mb-4">
           <div>
             <div className="text-sm font-medium">Enviar briefing diário por email</div>

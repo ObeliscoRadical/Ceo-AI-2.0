@@ -284,7 +284,7 @@ async def erp_integration_connect(inp: ERPIntegrationInput, request: Request, us
         raw_token = secrets.token_urlsafe(24)
         generated = True
     if not raw_token and not existing.get("token_hash"):
-        raise HTTPException(status_code=400, detail="Indica um token seguro ou pede ao CEO AI para gerar um.")
+        raise HTTPException(status_code=400, detail="Indica um token seguro ou pede ao CEO AI 2.0 para gerar um.")
     auth_mode = (inp.auth_mode or existing.get("auth_mode") or "header").strip().lower()
     if auth_mode not in AUTH_MODES:
         raise HTTPException(status_code=400, detail="Modo de autenticação inválido")

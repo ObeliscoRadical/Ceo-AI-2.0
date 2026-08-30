@@ -63,7 +63,7 @@ const INTEGRATION_NAV = [
 const Logo = ({ size = 40 }) => (
   <div className="relative flex items-center justify-center" style={{ width: size, height: size }} aria-hidden="true">
     <div className="absolute inset-1 rounded-full" style={{ background: "radial-gradient(circle, rgba(59,130,246,0.4), transparent 70%)", filter: "blur(6px)" }} />
-    <img src="/android_cut.png" alt="CEO AI" className="relative w-full h-full object-contain" style={{ filter: "drop-shadow(0 0 6px rgba(59,130,246,0.45))" }} />
+    <img src="/android_cut.png" alt="CEO AI 2.0" className="relative w-full h-full object-contain" style={{ filter: "drop-shadow(0 0 6px rgba(59,130,246,0.45))" }} />
   </div>
 );
 
@@ -146,7 +146,7 @@ const MobileDrawerNav = ({ active, setNewOpen, isPremium, isAdmin, isActive, go,
   <div className="flex flex-col h-full">
     <div className="flex items-center gap-3 mb-8">
       <Logo />
-      <div><span className="font-serif-lux text-xl">CEO AI</span><p className="text-[10px] text-slate-400 uppercase tracking-[0.15em]">Diretor Executivo Digital</p></div>
+      <div><span className="font-serif-lux text-xl">CEO AI 2.0</span><p className="text-[10px] text-slate-400 uppercase tracking-[0.15em]">Diretor Executivo Digital</p></div>
     </div>
     <button data-testid="company-selector-mobile" onClick={() => { setNewOpen(true); }} className="flex items-center gap-2 w-full px-3 py-2.5 rounded-xl border border-white/10 hover:bg-white/[0.04] transition-colors mb-4 text-left">
       <Building2 className="w-4 h-4 text-blue-400" /><span className="text-sm truncate flex-1">{active?.name || "Empresa"}</span><Plus className="w-4 h-4 text-slate-400" />
@@ -238,7 +238,7 @@ export function AppLayout() {
       <div className="flex items-center gap-3 px-5 pt-6 pb-5">
         <Logo size={38} />
         <div className="leading-tight">
-          <div className="font-serif-lux text-lg">CEO AI</div>
+          <div className="font-serif-lux text-lg">CEO AI 2.0</div>
           <div className="text-[9.5px] text-slate-500 uppercase tracking-[0.18em]">Diretor Executivo</div>
         </div>
       </div>
@@ -315,7 +315,7 @@ export function AppLayout() {
       {DesktopRail}
 
       <header className="md:hidden fixed top-0 left-0 right-0 h-14 z-30 flex items-center justify-between px-4 border-b border-white/[0.08] bg-[#05050A]/90 backdrop-blur-xl">
-        <div className="flex items-center gap-2"><Logo /><span className="font-serif-lux text-lg">CEO AI</span></div>
+        <div className="flex items-center gap-2"><Logo /><span className="font-serif-lux text-lg">CEO AI 2.0</span></div>
         <div className="flex items-center gap-1">
           <NotificationBell compact />
           <button onClick={() => setMobileOpen(true)} data-testid="mobile-menu-btn" className="w-10 h-10 flex items-center justify-center rounded-xl border border-white/10"><Menu className="w-5 h-5" /></button>
@@ -325,7 +325,7 @@ export function AppLayout() {
       <Sheet open={mobileOpen} onOpenChange={setMobileOpen}>
         <SheetContent side="left" className="w-[288px] p-6 bg-[#07070d] border-white/10 overflow-y-auto">
           <SheetTitle className="sr-only">Menu principal</SheetTitle>
-          <SheetDescription className="sr-only">Navegação mobile com acesso às áreas do CEO AI e submenu de Marketing.</SheetDescription>
+          <SheetDescription className="sr-only">Navegação mobile com acesso às áreas do CEO AI 2.0 e submenu de Marketing.</SheetDescription>
           <MobileDrawerNav active={active} setNewOpen={setNewOpen} isPremium={isPremium} isAdmin={isAdmin} isActive={isActive} go={go} doLogout={doLogout} marketingOpen={marketingOpen} setMarketingOpen={setMarketingOpen} isMarketingChildActive={isMarketingChildActive} />
         </SheetContent>
       </Sheet>

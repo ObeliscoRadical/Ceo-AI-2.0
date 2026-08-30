@@ -19,7 +19,7 @@ const DEFAULT_PUBLIC_COPY = {
   primaryCtaUrl: "#login-auth-panel",
   secondaryCtaLabel: "Ver planos",
   secondaryCtaUrl: "/planos",
-  socialProofTitle: "Porque líderes usam o CEO AI",
+  socialProofTitle: "Porque líderes usam o CEO AI 2.0",
   socialProofItems: [
     "Clareza executiva sem ruído",
     "CRM, finanças e marketing no mesmo cockpit",
@@ -65,7 +65,7 @@ export default function Login() {
 
   useEffect(() => {
     applyPublicSeo({
-      title: "CEO AI | Login",
+      title: "CEO AI 2.0 | Login",
       description: DEFAULT_PUBLIC_COPY.subtitle,
       canonicalPath: "/login",
     });
@@ -86,8 +86,7 @@ export default function Login() {
   };
 
   const googleLogin = () => {
-    const redirect = `${window.location.origin}/login`;
-    window.location.href = `https://auth.emergentagent.com/?redirect=${encodeURIComponent(redirect)}`;
+    toast.info("Utilize o formulário de email e palavra-passe para iniciar sessão.");
   };
 
   return (
@@ -98,7 +97,7 @@ export default function Login() {
         <div className="absolute inset-0 opacity-[0.08]" style={{ background: "url('https://images.unsplash.com/photo-1747673002516-f11a48cb0ce2?crop=entropy&cs=srgb&fm=jpg&q=85') center/cover" }} />
         <div className="relative flex items-center justify-center" style={{ width: 340, height: 340 }}>
           <div className="absolute inset-10 rounded-full" style={{ background: "radial-gradient(circle, rgba(59,130,246,0.4), transparent 70%)", filter: "blur(36px)" }} />
-          <img src="/android_cut.png" alt="CEO AI" className="relative w-full h-full object-contain" style={{ filter: "drop-shadow(0 0 26px rgba(59,130,246,0.5))" }} />
+          <img src="/android_cut.png" alt="CEO AI 2.0" className="relative w-full h-full object-contain" style={{ filter: "drop-shadow(0 0 26px rgba(59,130,246,0.5))" }} />
         </div>
         <h1 className="font-serif-lux text-5xl mt-12 text-center leading-tight tracking-tight" data-testid="login-public-headline">
           {DEFAULT_PUBLIC_COPY.headline}
@@ -114,12 +113,12 @@ export default function Login() {
           <div className="lg:hidden flex justify-center mb-8">
             <div className="relative flex items-center justify-center" style={{ width: 150, height: 150 }}>
               <div className="absolute inset-6 rounded-full" style={{ background: "radial-gradient(circle, rgba(59,130,246,0.4), transparent 70%)", filter: "blur(18px)" }} />
-              <img src="/android_cut.png" alt="CEO AI" className="relative w-full h-full object-contain" style={{ filter: "drop-shadow(0 0 20px rgba(59,130,246,0.5))" }} />
+              <img src="/android_cut.png" alt="CEO AI 2.0" className="relative w-full h-full object-contain" style={{ filter: "drop-shadow(0 0 20px rgba(59,130,246,0.5))" }} />
             </div>
           </div>
           <h2 className="font-serif-lux text-4xl mb-2">{mode === "login" ? "Bem-vindo de volta" : "Comece agora"}</h2>
           <p className="text-muted-foreground text-sm mb-8">
-            {mode === "login" ? "Entre para falar com o seu CEO AI." : "Crie a sua conta e conheça o seu Diretor Executivo Digital."}
+            {mode === "login" ? "Entre para falar com o seu CEO AI 2.0." : "Crie a sua conta e conheça o seu Diretor Executivo Digital."}
           </p>
 
           <button onClick={googleLogin} data-testid="google-login-btn" disabled={loading}

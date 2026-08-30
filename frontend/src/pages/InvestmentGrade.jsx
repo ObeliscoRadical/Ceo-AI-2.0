@@ -190,7 +190,7 @@ export default function InvestmentGrade() {
       {data.document_insights?.length > 0 && (
         <div className="surface rounded-3xl p-8 mt-6" data-testid="doc-insights">
           <div className="flex items-center gap-2 mb-1"><FileSearch className="w-5 h-5 text-[#3B82F6]" /><h2 className="font-serif-lux text-2xl">Documentos analisados pela IA</h2></div>
-          <p className="text-muted-foreground text-sm mb-6">O que o CEO AI leu nos teus documentos e usou nesta avaliação.</p>
+          <p className="text-muted-foreground text-sm mb-6">O que o CEO AI 2.0 leu nos teus documentos e usou nesta avaliação.</p>
           <div className="space-y-3">
             {data.document_insights.map((di, i) => (
               <div key={i} className="flex gap-3 items-start p-4 rounded-2xl border border-border" data-testid={`doc-insight-${i}`}>

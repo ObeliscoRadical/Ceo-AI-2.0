@@ -110,7 +110,7 @@ async def chat(inp: ChatInput, user: dict = Depends(premium_user)):
                     break
         except Exception as e:
             logger.error(f"chat error: {e}")
-            yield f"data: {json.dumps({'delta': ' [erro de ligação com o CEO AI]'})}\n\n"
+            yield f"data: {json.dumps({'delta': ' [erro de ligação com o CEO AI 2.0]'})}\n\n"
         await db.chat_messages.insert_one({"session_id": session_id, "user_id": user["id"], "role": "assistant",
                                            "content": full, "created_at": datetime.now(timezone.utc).isoformat()})
         if inp.attachment_ids:
@@ -155,7 +155,7 @@ async def send_briefing_email(request: Request, user: dict = Depends(get_current
     data = await make_briefing(user["id"], user.get("name", ""))
     app_url = request.headers.get("origin") or os.environ.get("FRONTEND_URL", "")
     html = build_briefing_html(user.get("name", ""), data, app_url)
-    ok = await send_email_raw(user["email"], "O teu briefing diário — CEO AI", html)
+    ok = await send_email_raw(user["email"], "O teu briefing diário — CEO AI 2.0", html)
     if not ok:
         raise HTTPException(502, "Não foi possível enviar o email")
     return {"sent": True, "to": user["email"]}

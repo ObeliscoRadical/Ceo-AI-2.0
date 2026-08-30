@@ -20,7 +20,7 @@ async def push_subscribe(inp: PushSubscriptionInput, user: dict = Depends(get_cu
 
 @router.post("/push/test")
 async def push_test(user: dict = Depends(get_current_user)):
-    n = await send_push_to_user(user["id"], "CEO AI", "Notificações ativas ✅ Vou avisar-te sobre o valor da tua empresa.", "/")
+    n = await send_push_to_user(user["id"], "CEO AI 2.0", "Notificações ativas ✅ Vou avisar-te sobre o valor da tua empresa.", "/")
     if n == 0:
         raise HTTPException(status_code=400, detail="Nenhum dispositivo subscrito. Ativa as notificações primeiro neste aparelho.")
     return {"ok": True, "sent": n}
@@ -35,4 +35,4 @@ async def contact(inp: ContactInput):
 
 @router.get("/")
 async def root():
-    return {"message": "CEO AI online"}
+    return {"message": "CEO AI 2.0 online"}

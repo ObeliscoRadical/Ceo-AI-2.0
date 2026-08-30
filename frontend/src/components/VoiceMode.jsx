@@ -2,6 +2,7 @@ import { useEffect, useRef, useState } from "react";
 import { createPortal } from "react-dom";
 import { motion, AnimatePresence } from "framer-motion";
 import { CEOOrb } from "@/components/CEOOrb";
+import { CEOHumanoidReactor } from "@/components/CEOHumanoidReactor";
 import { api } from "@/lib/api";
 import { Mic, X, Loader2 } from "lucide-react";
 
@@ -144,9 +145,9 @@ export function VoiceMode({ open, onClose, sessionId, onSession }) {
           <X className="w-6 h-6" />
         </button>
 
-        <motion.div animate={{ scale }} transition={{ type: "spring", stiffness: 120, damping: 18 }} className="relative">
-          <div className="absolute rounded-full" style={{ inset: -40, background: `radial-gradient(circle, rgba(59,130,246,${0.15 + amp * 0.4}), transparent 70%)`, filter: "blur(20px)" }} />
-          <CEOOrb size={230} />
+        <motion.div animate={{ scale }} transition={{ type: "spring", stiffness: 120, damping: 18 }} className="relative flex items-center justify-center">
+          <div className="absolute rounded-full" style={{ inset: -50, background: `radial-gradient(circle, rgba(0,240,255,${0.18 + amp * 0.45}), transparent 70%)`, filter: "blur(28px)" }} />
+          <CEOHumanoidReactor size={340} isSpeaking={status === "speaking"} isListening={status === "listening"} amplitude={amp} />
         </motion.div>
 
         <p className="mt-12 text-white/50 text-sm tracking-[0.2em] uppercase h-5" data-testid="voice-status">{STATUS_LABEL[status]}</p>

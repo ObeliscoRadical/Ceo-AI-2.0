@@ -116,16 +116,7 @@ async def investment_grade(user: dict = Depends(get_current_user)):
         f"'disclaimer': 1 frase — se o nível for 'Nível Profissional', diz que a avaliação foi fundamentada em documentos financeiros analisados; caso contrário, esclarece que é uma estimativa e não uma avaliação pericial oficial. "
         f"Tudo em português. Sem texto fora do JSON."
     )
-    chat = LlmChat(api_key=EMERGENT_KEY, session_id=f"grade-{uuid.uuid4()}", system_message=sysmsg).with_model("openai", "gpt-5.4")
-    ai = {}
-    try:
-        resp = await chat.send_message(UserMessage(text=prompt))
-        text = resp.strip()
-        if "```" in text:
-            text = text.split("```")[1].replace("json", "", 1).strip()
-        ai = json.loads(text)
-    except Exception as e:
-        logger.error(f"grade error: {e}")
+    ai = await ai_json(sysmsg, prompt, model="gemini-3.7-flash") or {}
     notes = ai.get("grade_notes", {})
     fallback_why = {
         "financeiro": "Baseado na saúde financeira e margem de lucro atuais.",

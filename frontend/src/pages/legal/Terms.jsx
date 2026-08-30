@@ -5,7 +5,7 @@ import { trackPublicSurface } from "@/lib/publicSite";
 
 export default function Terms() {
   useEffect(() => {
-    applyPublicSeo({ title: "CEO AI | Termos", description: "Termos e condições do CEO AI.", canonicalPath: "/termos" });
+    applyPublicSeo({ title: "CEO AI 2.0 | Termos", description: "Termos e condições do CEO AI 2.0.", canonicalPath: "/termos" });
     trackPublicSurface("terms", "/termos", "Termos").catch(() => {});
   }, []);
 

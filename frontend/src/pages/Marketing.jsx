@@ -459,7 +459,7 @@ function Marketing() {
 
   const exportAll = () => {
     if (!content) return;
-    let text = "PLANO EDITORIAL — CEO AI (Diretor de Marketing)\n\n";
+    let text = "PLANO EDITORIAL — CEO AI 2.0 (Diretor de Marketing)\n\n";
     if (content.brand) {
       text += `Tom da marca: ${content.brand.tom}\n`;
       text += `Pilares: ${(content.brand.pilares || []).join(", ")}\n`;

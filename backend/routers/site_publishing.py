@@ -169,7 +169,7 @@ def _homepage_default_copy(ctx: Optional[dict] = None) -> dict:
     pain = _short(icp.get("dor"), "prioridades dispersas e pouca visibilidade")
     return {
         "headline": f"{company}: decisões executivas com mais clareza e menos ruído",
-        "subtitle": f"O CEO AI ajuda {company} a cruzar marketing, CRM, finanças e operação para decidir o próximo passo com confiança — especialmente em {sector} e com foco em {main_goal.lower()}.",
+        "subtitle": f"O CEO AI 2.0 ajuda {company} a cruzar marketing, CRM, finanças e operação para decidir o próximo passo com confiança — especialmente em {sector} e com foco em {main_goal.lower()}.",
         "primary_cta_label": "Entrar no painel",
         "primary_cta_url": "#login-auth-panel",
         "secondary_cta_label": "Ver planos",
@@ -275,7 +275,7 @@ async def _generate_homepage_proposal(uid: str, cid: str, use_ai: bool = False) 
     if use_ai:
         try:
             raw = await ai_json(
-                "És o Agente do Site do CEO AI. Respondes apenas com JSON em português europeu.",
+                "És o Agente do Site do CEO AI 2.0. Respondes apenas com JSON em português europeu.",
                 (
                     f"Contexto da empresa:\n{_prompt_context(ctx)}\n\n"
                     "Quero otimizar parcialmente a homepage pública /login. "
@@ -575,7 +575,7 @@ def _architecture_summary() -> dict:
             "details": "Não existe CMS externo nem headless CMS dedicado para o site público atual.",
         },
         "publishing_today": {
-            "mode": "Mesmo projeto/infrastrutura: frontend React + backend FastAPI publicados juntos na Emergent.",
+            "mode": "Mesmo projeto/infrastrutura: frontend React + backend FastAPI integrados.",
             "site_change_method_before_gateway": "Para páginas públicas hardcoded, alterar código e voltar a publicar/deployar.",
         },
         "chosen_mechanism": {

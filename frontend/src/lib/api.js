@@ -1,11 +1,20 @@
 import axios from "axios";
 
-const BACKEND_URL = process.env.REACT_APP_BACKEND_URL;
-export const API = `${BACKEND_URL}/api`;
+const BACKEND_URL = process.env.REACT_APP_BACKEND_URL || "http://localhost:8001";
+export const API = `${BACKEND_URL.replace(/\/$/, '')}/api`;
 
 export const api = axios.create({
   baseURL: API,
   withCredentials: true,
+});
+
+api.interceptors.request.use((config) => {
+  const token = typeof window !== "undefined" ? localStorage.getItem("access_token") : null;
+  if (token) {
+    config.headers = config.headers || {};
+    config.headers.Authorization = `Bearer ${token}`;
+  }
+  return config;
 });
 
 export function formatApiError(detail) {
@@ -19,9 +28,14 @@ export function formatApiError(detail) {
 
 // Stream chat via fetch + SSE reader
 export async function streamChat({ message, session_id, attachment_ids }, onDelta, onDone) {
+  const token = typeof window !== "undefined" ? localStorage.getItem("access_token") : null;
+  const headers = { "Content-Type": "application/json" };
+  if (token) {
+    headers["Authorization"] = `Bearer ${token}`;
+  }
   const res = await fetch(`${API}/chat`, {
     method: "POST",
-    headers: { "Content-Type": "application/json" },
+    headers,
     credentials: "include",
     body: JSON.stringify({ message, session_id, attachment_ids }),
   });

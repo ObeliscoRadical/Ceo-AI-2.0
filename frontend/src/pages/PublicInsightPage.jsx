@@ -17,14 +17,14 @@ export default function PublicInsightPage() {
       .then((data) => {
         if (!active) return;
         setEntry(data);
-        applyPublicSeo({ title: `${data.seo_title || data.title} | CEO AI`, description: data.seo_description || data.excerpt, canonicalPath: data.public_url || `/insights/${slug}` });
+        applyPublicSeo({ title: `${data.seo_title || data.title} | CEO AI 2.0`, description: data.seo_description || data.excerpt, canonicalPath: data.public_url || `/insights/${slug}` });
         trackPublicView("article", slug).catch(() => {});
         trackPublicSurface(`article-${slug}`, data.public_url || `/insights/${slug}`, data.title).catch(() => {});
       })
       .catch(() => {
         if (!active) return;
         setEntry(null);
-        applyPublicSeo({ title: "Insight não encontrado | CEO AI", description: "Conteúdo público não encontrado.", canonicalPath: `/insights/${slug}` });
+        applyPublicSeo({ title: "Insight não encontrado | CEO AI 2.0", description: "Conteúdo público não encontrado.", canonicalPath: `/insights/${slug}` });
       })
       .finally(() => active && setLoading(false));
     return () => { active = false; };
@@ -63,7 +63,7 @@ export default function PublicInsightPage() {
           <div className="mt-12 rounded-3xl border border-white/10 bg-white/[0.03] p-6 flex items-center justify-between gap-4 flex-wrap" data-testid="public-insight-cta-card">
             <div>
               <p className="text-xs uppercase tracking-[0.18em] text-slate-400">Próximo passo</p>
-              <p className="text-sm text-slate-300 mt-2">Este conteúdo foi publicado automaticamente pelo gateway interno do CEO AI.</p>
+              <p className="text-sm text-slate-300 mt-2">Este conteúdo foi publicado automaticamente pelo gateway interno do CEO AI 2.0.</p>
             </div>
             <Link to={entry.cta_url || "/contacto"} className="rounded-full bg-[#3B82F6] px-5 py-3 text-sm font-medium text-white" data-testid="public-insight-cta-link">
               {entry.cta_label}

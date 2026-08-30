@@ -16,6 +16,7 @@ from core import (
     db,
     generate_marketing_image,
     generate_marketing_images,
+    generate_post_visual_scenes,
     get_erp_financial_context,
     logger,
     premium_user,
@@ -810,7 +811,7 @@ def build_marketing_briefing_html(name: str, company_name: str, data: dict, app_
     <table width='100%' cellpadding='0' cellspacing='0' style='padding:28px 0;background:#0f172a;'><tr><td align='center'>
       <table width='620' cellpadding='0' cellspacing='0' style='background:#ffffff;border-radius:22px;overflow:hidden;'>
         <tr><td style='padding:28px 32px;background:linear-gradient(135deg,#0f172a,#1d4ed8);color:#fff;'>
-          <div style='font-size:12px;letter-spacing:2px;text-transform:uppercase;color:#bfdbfe;'>CEO AI · Diretor de Marketing</div>
+          <div style='font-size:12px;letter-spacing:2px;text-transform:uppercase;color:#bfdbfe;'>CEO AI 2.0 · Diretor de Marketing</div>
           <div style='font-size:28px;font-weight:700;margin-top:8px;'>{data.get('headline','Briefing Marketing')}</div>
           <div style='font-size:14px;line-height:1.6;color:#e2e8f0;margin-top:12px;'>{data.get('summary','')}</div>
         </td></tr>
@@ -1113,9 +1114,8 @@ async def generate_content(user: dict = Depends(premium_user)):
         '"biblioteca":[{"id":str,"titulo":str,"angulo":str,"objetivo":str,"pilar":str,"formatos":[str],"cta":str}],'
         '"posts":[{"id":str,"formato":str,"titulo":str,"legenda":str,"hashtags":[str],"cta":str,"dia":str,"tema":str,"objetivo":str,"pilar":str}],'
         '"calendario":[{"dia":str,"formato":str,"tema":str,"objetivo":str,"pilar":str,"post_id":str|null}]}. '
-        'Regras: 1) "formato" ∈ {Post, Story, Reel}. 2) Gera 10 a 12 posts reutilizáveis. 3) "biblioteca" = 6 a 8 ângulos editoriais. '
-        '4) "calendario" = exatamente 30 entradas, com distribuição realista ao longo de 30 dias. 5) Usa as dores do ICP, o estado das oportunidades do CRM '
-        'e a pressão financeira atual para escolher temas e CTAs. 6) Nunca escrever conteúdo genérico; falar como esta empresa, neste setor, nesta região.'
+        'Regras: 1) "formato" ∈ {Post, Story, Reel}. 2) Gera 6 a 8 posts estratégicos com legendas e hashtags. 3) "biblioteca" = 4 a 6 ângulos editoriais. '
+        '4) "calendario" = 14 a 30 entradas com distribuição ao longo do mês. 5) Usa as dores do ICP e as vantagens da empresa. 6) Falar em português europeu.'
     )
     ai_content = await ai_json(system, prompt) or {}
     content = _normalize_content(ai_content, ctx)
@@ -1147,7 +1147,7 @@ async def update_post_status(post_id: str, inp: PostStatusIn, user: dict = Depen
 
 @router.post("/marketing/image")
 async def gen_post_image(inp: ImageIn, user: dict = Depends(premium_user)):
-    """Gera 3 variações de imagem para UM post, com o logo da empresa aplicado, e guarda-as."""
+    """Gera 3 variações de imagem para UM post estritamente alinhadas com a legenda, com o logo da empresa aplicado."""
     uid = user["id"]
     cid = await active_company_id(uid)
     doc = await db.marketing_content.find_one({"user_id": uid, "company_id": cid})
@@ -1160,14 +1160,20 @@ async def gen_post_image(inp: ImageIn, user: dict = Depends(premium_user)):
         raise HTTPException(404, "Post não encontrado.")
     post = posts[inp.index]
     ctx = await _ctx(uid, cid)
-    brand = content.get("brand") or {}
-    prompt = (
-        f"Cena visual conceptual para uma publicação de marketing de '{ctx['name']}' "
-        f"(setor: {ctx['sector']}, região: {ctx['region']}). Ideia: {post.get('titulo', '')}. "
-        f"Tema: {post.get('tema', '')}. Tom visual: {brand.get('tom', 'profissional e moderno')}. "
-        f"Formato: {post.get('formato', 'Post')}. Criar 3 variações distintas da mesma ideia para escolha editorial."
+    
+    # 1. Gerar 3 cenas visuais altamente contextuais baseadas na LEGENDA exata do post
+    titulo = post.get("titulo", "")
+    legenda = post.get("legenda", "")
+    tema = post.get("tema", "")
+    scene_prompts = await generate_post_visual_scenes(
+        titulo=titulo,
+        legenda=legenda,
+        tema=tema,
+        sector=ctx.get("sector", ""),
+        company_name=ctx.get("name", "")
     )
-    images = await generate_marketing_images(prompt, number_of_images=3)
+    
+    images = await generate_marketing_images(scene_prompts=scene_prompts, number_of_images=3, topic_query=f"{titulo} {tema}")
     logo = await db.brand_assets.find_one({"user_id": uid, "company_id": cid})
     urls = []
     for img in images:

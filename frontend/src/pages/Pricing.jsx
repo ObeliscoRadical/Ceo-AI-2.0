@@ -10,7 +10,7 @@ import { toast } from "sonner";
 import { Check, Loader2, Crown, Flame, Shield, Sparkles, Users, ChevronDown, MessageSquare } from "lucide-react";
 
 const FOUNDER_FEATURES = [
-  "Acesso completo ao CEO AI",
+  "Acesso completo ao CEO AI 2.0",
   "Todas as funcionalidades do Plano Professional",
   "Todas as futuras funcionalidades Professional incluídas",
   'Distintivo exclusivo "Empresa Fundadora"',
@@ -21,7 +21,7 @@ const FOUNDER_FEATURES = [
 ];
 const PRO_FEATURES = [
   "Painel do CEO", "Saúde Empresarial", "Valor da Empresa", "Motor do Futuro",
-  "Relatórios Executivos", "Conversar com o CEO AI", "Análises ilimitadas", "Melhorias contínuas",
+  "Relatórios Executivos", "Conversar com o CEO AI 2.0", "Análises ilimitadas", "Melhorias contínuas",
 ];
 const ENT_FEATURES = [
   "Tudo do Professional", "Multiempresa", "Gestão de Equipas",
@@ -61,7 +61,7 @@ export default function Pricing() {
       .catch(() => {});
   }, []);
   useEffect(() => {
-    applyPublicSeo({ title: "CEO AI | Planos", description: heroCopy.subtitle, canonicalPath: "/planos" });
+    applyPublicSeo({ title: "CEO AI 2.0 | Planos", description: heroCopy.subtitle, canonicalPath: "/planos" });
     trackPublicSurface("pricing", "/planos", "Planos").catch(() => {});
   }, [heroCopy.subtitle]);
 
@@ -121,7 +121,7 @@ export default function Pricing() {
             </div>
             <p className="text-sm text-muted-foreground line-through mb-5">59 €/mês</p>
             <p className="text-sm text-muted-foreground leading-relaxed mb-6">
-              Ajude-nos a construir o futuro do CEO AI. Estamos a abrir a plataforma apenas para as primeiras 15 empresas — que terão o preço mais baixo que alguma vez existirá. Enquanto mantiverem a subscrição ativa, este preço nunca aumentará.
+              Ajude-nos a construir o futuro do CEO AI 2.0. Estamos a abrir a plataforma apenas para as primeiras 15 empresas — que terão o preço mais baixo que alguma vez existirá. Enquanto mantiverem a subscrição ativa, este preço nunca aumentará.
             </p>
 
             <div className="rounded-2xl bg-[#0B0C10]/40 border border-[#3B82F6]/20 p-4 mb-6" data-testid="founder-counter">
@@ -208,7 +208,7 @@ export default function Pricing() {
         <div className="flex items-center gap-2 text-[#3B82F6] mb-4"><Flame className="w-5 h-5" /><span className="text-xs uppercase tracking-[0.2em]">Oportunidade rara</span></div>
         <h2 className="font-serif-lux text-3xl md:text-4xl mb-4">Porque criar uma Empresa Fundadora?</h2>
         <p className="text-muted-foreground leading-relaxed max-w-3xl">
-          Estamos a selecionar apenas 15 empresas para participar na primeira fase de crescimento do CEO AI. Estas empresas terão acesso direto à equipa de desenvolvimento, poderão influenciar a evolução da plataforma e manterão um preço exclusivo para sempre, desde que mantenham a subscrição ativa. Depois de preenchidas as 15 vagas, este plano desaparecerá definitivamente.
+          Estamos a selecionar apenas 15 empresas para participar na primeira fase de crescimento do CEO AI 2.0. Estas empresas terão acesso direto à equipa de desenvolvimento, poderão influenciar a evolução da plataforma e manterão um preço exclusivo para sempre, desde que mantenham a subscrição ativa. Depois de preenchidas as 15 vagas, este plano desaparecerá definitivamente.
         </p>
       </section>
 

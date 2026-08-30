@@ -54,7 +54,7 @@ export default function ApoioReport() {
           <div className="flex items-center gap-3">
             <div className="w-10 h-10 rounded-xl bg-blue-600 flex items-center justify-center text-white font-bold">C</div>
             <div>
-              <div className="text-lg font-bold leading-none">CEO AI</div>
+              <div className="text-lg font-bold leading-none">CEO AI 2.0</div>
               <div className="text-[10px] uppercase tracking-[0.22em] text-gray-500 mt-1">Diretor Executivo Digital</div>
             </div>
           </div>
@@ -128,7 +128,7 @@ export default function ApoioReport() {
         )}
 
         <div className="border-t border-gray-200 pt-4 text-[11px] text-gray-400 leading-relaxed">
-          A elegibilidade é uma estimativa com base no perfil da empresa e não garante aprovação. Confirma sempre requisitos, montantes e prazos na fonte oficial do programa. Este resumo não constitui aconselhamento legal ou fiscal. Fonte da base curada verificada a {g.verified_at || "—"}. Gerado pelo CEO AI em {today}.
+          A elegibilidade é uma estimativa com base no perfil da empresa e não garante aprovação. Confirma sempre requisitos, montantes e prazos na fonte oficial do programa. Este resumo não constitui aconselhamento legal ou fiscal. Fonte da base curada verificada a {g.verified_at || "—"}. Gerado pelo CEO AI 2.0 em {today}.
         </div>
       </div>
     </div>

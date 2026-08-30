@@ -241,7 +241,7 @@ async def send_sim(lead_id: str, inp: SendSimIn, user: dict = Depends(premium_us
             return {"ok": False, "reason": "no_email"}
         body = inp.message.replace("\n", "<br>")
         html = (f"<div style='font-family:Arial,sans-serif;max-width:600px'>"
-                f"<h2 style='color:#3B82F6'>Simulação de Envio — CEO AI</h2>"
+                f"<h2 style='color:#3B82F6'>Simulação de Envio — CEO AI 2.0</h2>"
                 f"<p><b>Lead:</b> {lead.get('name')}<br><b>Contacto:</b> {lead.get('contact') or 'n/d'}<br>"
                 f"<b>Setor:</b> {lead.get('sector') or 'n/d'} · <b>Fase:</b> {lead.get('stage')} · <b>Score:</b> {lead.get('score')}</p>"
                 f"<hr><p><b>Mensagem sugerida:</b></p><div style='background:#f6f7f9;padding:16px;border-radius:12px'>{body}</div>"

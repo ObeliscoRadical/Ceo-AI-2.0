@@ -279,8 +279,8 @@ async def goal_notify(user: dict = Depends(premium_user)):
         return {"ok": False, "reason": "no_email"}
     html = build_goal_alert_html(u.get("name", ""), prog["currency_symbol"], prog["current"],
                                  prog["target"], prog["pct"], prog["reached"], os.environ.get("FRONTEND_URL", ""))
-    subj = ("Atingiste a tua meta de valor — CEO AI" if prog["reached"]
-            else f"Estás a {int(round(prog['pct']))}% da tua meta de valor — CEO AI")
+    subj = ("Atingiste a tua meta de valor — CEO AI 2.0" if prog["reached"]
+            else f"Estás a {int(round(prog['pct']))}% da tua meta de valor — CEO AI 2.0")
     ok = await send_email_raw(u["email"], subj, html)
     return {"ok": bool(ok), "sent_to": u["email"], "pct": prog["pct"]}
 

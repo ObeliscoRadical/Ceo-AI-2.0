@@ -15,8 +15,9 @@ async def register(inp: RegisterInput, response: Response):
            "created_at": datetime.now(timezone.utc).isoformat()}
     res = await db.users.insert_one(doc)
     uid = str(res.inserted_id)
-    set_auth_cookie(response, create_access_token(uid, email))
-    return {"id": uid, "email": email, "name": inp.name, "role": "owner", "is_premium": False}
+    token = create_access_token(uid, email)
+    set_auth_cookie(response, token)
+    return {"id": uid, "email": email, "name": inp.name, "role": "owner", "is_premium": False, "token": token}
 
 @router.post("/auth/login")
 async def login(inp: LoginInput, response: Response):
@@ -25,31 +26,15 @@ async def login(inp: LoginInput, response: Response):
     if not user or not user.get("password_hash") or not verify_password(inp.password, user["password_hash"]):
         raise HTTPException(status_code=401, detail="Credenciais inválidas")
     uid = str(user["_id"])
-    set_auth_cookie(response, create_access_token(uid, email))
+    token = create_access_token(uid, email)
+    set_auth_cookie(response, token)
     return {"id": uid, "email": email, "name": user.get("name", ""), "role": user.get("role", "owner"),
-            "is_premium": bool(user.get("is_premium"))}
+            "is_premium": bool(user.get("is_premium")), "token": token}
 
 @router.post("/auth/session")
-async def google_session(response: Response, x_session_id: str = Header(None)):
-    if not x_session_id:
-        raise HTTPException(status_code=400, detail="Sem session_id")
-    r = requests.get("https://demobackend.emergentagent.com/auth/v1/env/oauth/session-data",
-                     headers={"X-Session-ID": x_session_id}, timeout=30)
-    if r.status_code != 200:
-        raise HTTPException(status_code=401, detail="Sessão Google inválida")
-    data = r.json()
-    email = data["email"].lower()
-    user = await db.users.find_one({"email": email})
-    if not user:
-        doc = {"email": email, "password_hash": "", "name": data.get("name", email),
-               "role": "owner", "auth_provider": "google", "picture": data.get("picture", ""), "is_premium": False,
-               "created_at": datetime.now(timezone.utc).isoformat()}
-        res = await db.users.insert_one(doc)
-        uid = str(res.inserted_id)
-    else:
-        uid = str(user["_id"])
-    set_auth_cookie(response, create_access_token(uid, email))
-    return {"id": uid, "email": email, "name": data.get("name", email), "picture": data.get("picture", "")}
+async def auth_session(response: Response, payload: dict = None):
+    # Optional endpoint for token verification / SSO
+    return {"ok": True}
 
 @router.post("/auth/logout")
 async def logout(response: Response):

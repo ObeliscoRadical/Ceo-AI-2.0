@@ -742,7 +742,7 @@ def build_grant_deadline_html(name, app, days, deadline, app_url):
             </td></tr></table>
           </td></tr>
           <tr><td style="padding:20px 32px;background:#faf9f6;border-top:1px solid #eee;">
-            <div style="font-size:11px;color:#a1a1aa;">Recebes este aviso porque estás a acompanhar candidaturas a apoios no CEO AI. Podes desativar em Personalização. A elegibilidade é uma estimativa; confirma sempre requisitos e prazos na fonte oficial.</div>
+            <div style="font-size:11px;color:#a1a1aa;">Recebes este aviso porque estás a acompanhar candidaturas a apoios no CEO AI 2.0. Podes desativar em Personalização. A elegibilidade é uma estimativa; confirma sempre requisitos e prazos na fonte oficial.</div>
           </td></tr>
         </table>
       </td></tr>

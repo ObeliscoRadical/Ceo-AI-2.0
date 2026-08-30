@@ -60,7 +60,7 @@ export default function MetaReport() {
           <div className="flex items-center gap-3">
             <div className="w-10 h-10 rounded-xl bg-blue-600 flex items-center justify-center text-white font-bold">C</div>
             <div>
-              <div className="text-lg font-bold leading-none">CEO AI</div>
+              <div className="text-lg font-bold leading-none">CEO AI 2.0</div>
               <div className="text-[10px] uppercase tracking-[0.22em] text-gray-500 mt-1">Diretor Executivo Digital</div>
             </div>
           </div>
@@ -170,7 +170,7 @@ export default function MetaReport() {
         </div>
 
         <div className="border-t border-gray-200 pt-4 text-[11px] text-gray-400 leading-relaxed">
-          Esta projeção é uma estimativa estratégica baseada nos dados da empresa e não constitui uma avaliação financeira, contabilística ou jurídica independente. Gerado pelo CEO AI em {today}.
+          Esta projeção é uma estimativa estratégica baseada nos dados da empresa e não constitui uma avaliação financeira, contabilística ou jurídica independente. Gerado pelo CEO AI 2.0 em {today}.
         </div>
       </div>
     </div>

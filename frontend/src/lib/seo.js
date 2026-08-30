@@ -39,7 +39,7 @@ export function applyPublicSeo({ title, description, canonicalPath, ogType = "we
   canonical.setAttribute("href", canonicalHref);
 
   ensureMetaByName("robots").setAttribute("content", "index, follow, max-image-preview:large");
-  ensureMetaByProperty("og:site_name").setAttribute("content", "CEO AI");
+  ensureMetaByProperty("og:site_name").setAttribute("content", "CEO AI 2.0");
   ensureMetaByProperty("og:type").setAttribute("content", ogType);
   ensureMetaByProperty("og:url").setAttribute("content", canonicalHref);
   ensureMetaByName("twitter:card").setAttribute("content", "summary_large_image");

@@ -5,7 +5,7 @@ import { trackPublicSurface } from "@/lib/publicSite";
 
 export default function Privacy() {
   useEffect(() => {
-    applyPublicSeo({ title: "CEO AI | Privacidade", description: `Política de privacidade do CEO AI. Contacto ${CONTACT_EMAIL}.`, canonicalPath: "/privacidade" });
+    applyPublicSeo({ title: "CEO AI 2.0 | Privacidade", description: `Política de privacidade do CEO AI 2.0. Contacto ${CONTACT_EMAIL}.`, canonicalPath: "/privacidade" });
     trackPublicSurface("privacy", "/privacidade", "Privacidade").catch(() => {});
   }, []);
 

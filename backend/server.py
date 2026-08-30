@@ -5,18 +5,21 @@ import os
 ROOT_DIR = Path(__file__).parent
 load_dotenv(ROOT_DIR / '.env')
 
-from fastapi import FastAPI, APIRouter
+from fastapi import FastAPI, APIRouter, HTTPException
+from fastapi.responses import FileResponse
+from fastapi.staticfiles import StaticFiles
 from starlette.middleware.cors import CORSMiddleware
 from apscheduler.schedulers.asyncio import AsyncIOScheduler
 from apscheduler.triggers.cron import CronTrigger
 from datetime import datetime, timezone
 
-from core import db, client, hash_password, verify_password, init_storage, send_daily_briefings, send_monthly_value_alerts, send_goal_alerts, logger
-from routers import auth, companies, finance, ceo, documents, billing, misc, voice, founders, goals, council, crm, marketing, marketing_autonomous, social, prospecting, notifications, grants, erp_integrations, site_publishing, growth_agent
+from core import db, client, hash_password, verify_password, init_storage, send_daily_briefings, send_monthly_value_alerts, send_goal_alerts, logger, UPLOAD_DIR
+from routers import auth, companies, finance, ceo, documents, billing, misc, voice, founders, goals, council, crm, marketing, marketing_autonomous, social, prospecting, notifications, grants, erp_integrations, site_publishing, growth_agent, obelisco_sync
 
 app = FastAPI()
+app.mount("/uploads", StaticFiles(directory=str(UPLOAD_DIR)), name="uploads")
 api_router = APIRouter(prefix="/api")
-for _m in (auth, companies, finance, ceo, documents, billing, misc, voice, founders, goals, council, crm, marketing, marketing_autonomous, social, prospecting, notifications, grants, erp_integrations, site_publishing, growth_agent):
+for _m in (auth, companies, finance, ceo, documents, billing, misc, voice, founders, goals, council, crm, marketing, marketing_autonomous, social, prospecting, notifications, grants, erp_integrations, site_publishing, growth_agent, obelisco_sync):
     api_router.include_router(_m.router)
 app.include_router(api_router)
 
@@ -85,7 +88,7 @@ async def startup():
         existing = await db.users.find_one({"email": admin_email})
         if not existing:
             await db.users.insert_one({"email": admin_email, "password_hash": hash_password(admin_password),
-                                       "name": "Admin CEO AI", "role": "admin", "auth_provider": "email", "picture": "",
+                                       "name": "Admin CEO AI 2.0", "role": "admin", "auth_provider": "email", "picture": "",
                                        "is_premium": True, "created_at": datetime.now(timezone.utc).isoformat()})
         else:
             upd = {"role": "admin", "is_premium": True}
@@ -95,7 +98,7 @@ async def startup():
         admin_doc = await db.users.find_one({"email": admin_email})
         if admin_doc and not await db.companies.find_one({"user_id": str(admin_doc["_id"])}):
             await db.companies.insert_one({
-                "user_id": str(admin_doc["_id"]), "name": "CEO AI (Admin)",
+                "user_id": str(admin_doc["_id"]), "name": "CEO AI 2.0 (Admin)",
                 "region": "PT", "currency": "EUR", "sector": "", "employees_count": 0,
                 "clients_count": 0, "bank_balance": 0, "monthly_tax_estimate": 0,
                 "profile": {}, "created_at": datetime.now(timezone.utc).isoformat()})
@@ -125,8 +128,21 @@ async def startup():
         scheduler.add_job(evaluate_crm_alerts, "interval", hours=6, id="crm_alerts", replace_existing=True, max_instances=1)
         from routers.grants import evaluate_grant_alerts
         scheduler.add_job(evaluate_grant_alerts, CronTrigger(hour=9, minute=0), id="grant_alerts", replace_existing=True, max_instances=1)
+        from obelisco_connector import sync_obelisco_to_ceo_ai
+        async def run_all_obelisco_syncs():
+            try:
+                users = await db.users.find({}).to_list(200)
+                for u in users:
+                    try:
+                        await sync_obelisco_to_ceo_ai(str(u["_id"]))
+                    except Exception as ex:
+                        logger.warning(f"Obelisco scheduled sync failed for user {u.get('_id')}: {ex}")
+            except Exception as e:
+                logger.error(f"Error in run_all_obelisco_syncs: {e}")
+        scheduler.add_job(run_all_obelisco_syncs, CronTrigger(hour=6, minute=30), id="obelisco_360_daily_sync", replace_existing=True)
+        scheduler.add_job(run_all_obelisco_syncs, "interval", hours=4, id="obelisco_360_interval_sync", replace_existing=True, max_instances=1)
         scheduler.start()
-        logger.info("Briefing scheduler started")
+        logger.info("Briefing scheduler started with Obelisco 360 Sync active")
     except Exception as e:
         logger.error(f"Scheduler start failed: {e}")
     try:
@@ -140,3 +156,22 @@ async def startup():
 @app.on_event("shutdown")
 async def shutdown_db_client():
     client.close()
+
+FRONTEND_BUILD_DIR = ROOT_DIR.parent / "frontend" / "build"
+if FRONTEND_BUILD_DIR.exists():
+    static_dir = FRONTEND_BUILD_DIR / "static"
+    if static_dir.exists():
+        app.mount("/static", StaticFiles(directory=str(static_dir)), name="static")
+
+    @app.get("/{full_path:path}")
+    async def serve_spa(full_path: str):
+        if full_path.startswith("api") or full_path.startswith("uploads"):
+            raise HTTPException(status_code=404, detail="Not Found")
+        target_file = FRONTEND_BUILD_DIR / full_path
+        if full_path and target_file.is_file():
+            return FileResponse(str(target_file))
+        index_file = FRONTEND_BUILD_DIR / "index.html"
+        if index_file.exists():
+            return FileResponse(str(index_file))
+        raise HTTPException(status_code=404, detail="Frontend build not found")
+

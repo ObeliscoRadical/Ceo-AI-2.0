@@ -1,4 +1,4 @@
-"""Idempotent Stripe catalog setup for CEO AI Premium plan."""
+"""Idempotent Stripe catalog setup for CEO AI 2.0 Premium plan."""
 import os, stripe
 from dotenv import load_dotenv
 from pathlib import Path
@@ -8,8 +8,8 @@ stripe.api_key = os.environ.get("STRIPE_SECRET_KEY") or "sk_test_emergent"
 
 CATALOG = [
     {
-        "emergent_product_id": "ceo_premium",
-        "name": "CEO AI Premium",
+        "product_id": "ceo_premium",
+        "name": "CEO AI 2.0 Premium",
         "tax_code": "txcd_10103001",  # SaaS
         "prices": [
             {"lookup_key": "premium_monthly", "amount": 2900, "currency": "eur", "interval": "month"},
@@ -22,10 +22,10 @@ CATALOG = [
 
 def get_or_create_product(entry):
     for p in stripe.Product.list(active=True).auto_paging_iter():
-        if p.to_dict().get("metadata", {}).get("emergent_product_id") == entry["emergent_product_id"]:
+        if p.to_dict().get("metadata", {}).get("product_id") == entry["product_id"]:
             return p
     return stripe.Product.create(name=entry["name"], tax_code=entry.get("tax_code"),
-        metadata={"managed_by": "emergent", "emergent_product_id": entry["emergent_product_id"]})
+        metadata={"managed_by": "ceo-ai-2.0", "product_id": entry["product_id"]})
 
 def main():
     for entry in CATALOG:

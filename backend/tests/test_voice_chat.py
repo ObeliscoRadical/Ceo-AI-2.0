@@ -16,14 +16,12 @@ from pathlib import Path
 import pytest
 import requests
 
-# Load env from backend/.env so EMERGENT_LLM_KEY is available for local TTS synth
+# Load env from backend/.env
 sys.path.insert(0, "/app/backend")
 from dotenv import load_dotenv
 load_dotenv("/app/backend/.env")
 
-from emergentintegrations.llm.openai import OpenAITextToSpeech  # noqa: E402
-
-BASE_URL = os.environ.get("REACT_APP_BACKEND_URL")
+BASE_URL = os.environ.get("REACT_APP_BACKEND_URL", "http://localhost:8001")
 if not BASE_URL:
     for line in Path("/app/frontend/.env").read_text().splitlines():
         if line.startswith("REACT_APP_BACKEND_URL="):

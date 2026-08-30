@@ -226,7 +226,7 @@ export default function Finances() {
                 {analyzing ? (
                   <div className="flex items-center gap-2 text-sm text-muted-foreground" data-testid="analysis-loading"><Loader2 className="w-4 h-4 animate-spin text-[#3B82F6]" />A analisar a tua empresa…</div>
                 ) : !analysis ? (
-                  <p className="text-sm text-muted-foreground">Pede ao teu CEO AI um diagnóstico com riscos e ações concretas para este mês.</p>
+                  <p className="text-sm text-muted-foreground">Pede ao teu CEO AI 2.0 um diagnóstico com riscos e ações concretas para este mês.</p>
                 ) : analysis.premium_locked ? (
                   <div className="text-center py-4" data-testid="analysis-locked">
                     <Crown className="w-8 h-8 text-amber-400 mx-auto mb-2" />
@@ -321,7 +321,7 @@ export default function Finances() {
       <Dialog open={editing} onOpenChange={setEditing}>
         <DialogContent className="surface max-h-[85vh] overflow-y-auto" data-testid="profile-editor">
           <DialogHeader><DialogTitle className="font-serif-lux text-2xl">Perfil financeiro</DialogTitle>
-            <DialogDescription className="text-muted-foreground text-sm">Valores médios mensais. Usados pelo CEO AI para analisar a empresa.</DialogDescription></DialogHeader>
+            <DialogDescription className="text-muted-foreground text-sm">Valores médios mensais. Usados pelo CEO AI 2.0 para analisar a empresa.</DialogDescription></DialogHeader>
           <div className="space-y-4">
             <div className="grid grid-cols-2 gap-4">
               <div><Label className="text-xs text-muted-foreground">Faturamento mensal</Label><Input data-testid="pf-revenue" type="number" step="0.01" value={pf.monthly_revenue} onChange={(e) => setPf({ ...pf, monthly_revenue: e.target.value })} className="mt-1 bg-transparent" placeholder="Ex: 25000" /></div>

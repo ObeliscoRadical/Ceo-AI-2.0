@@ -3,15 +3,27 @@ import { Button } from "@/components/ui/button";
 import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import { CheckCircle2, Download, Expand, Image as ImageIcon, Loader2, RefreshCw } from "lucide-react";
 
+export const resolveImageUrl = (url) => {
+  if (!url || typeof url !== "string") return "";
+  if (url.includes("localhost:3000/api/")) {
+    return url.replace("http://localhost:3000/api/", "http://localhost:8001/api/");
+  }
+  if (url.startsWith("/api/")) {
+    return `http://localhost:8001${url}`;
+  }
+  return url;
+};
+
 export const PostImageVariantSelector = ({ post, index, busyKey, onGenerate, onSelectVariant, onDownloadSelected }) => {
   const variants = post?.image_variants || [];
   const selectedIndex = typeof post?.selected_image_index === "number" ? post.selected_image_index : (variants.length > 0 ? 0 : null);
-  const selectedUrl = post?.image_url || (selectedIndex !== null ? variants[selectedIndex] : null);
+  const rawSelectedUrl = post?.image_url || (selectedIndex !== null ? variants[selectedIndex] : null);
+  const selectedUrl = resolveImageUrl(rawSelectedUrl);
   const [previewIndex, setPreviewIndex] = useState(null);
 
   const previewUrl = useMemo(() => {
     if (previewIndex === null || previewIndex < 0 || previewIndex >= variants.length) return null;
-    return variants[previewIndex];
+    return resolveImageUrl(variants[previewIndex]);
   }, [previewIndex, variants]);
 
   const isGenerating = busyKey === `generate-${index}`;
@@ -29,7 +41,7 @@ export const PostImageVariantSelector = ({ post, index, busyKey, onGenerate, onS
           {isGenerating ? (
             <>
               <Loader2 className="w-6 h-6 animate-spin text-[#A78BFA]" />
-              <span className="text-xs text-muted-foreground">A criar 3 imagens (~30s)…</span>
+              <span className="text-xs text-muted-foreground">A criar 3 imagens de alta resolução…</span>
             </>
           ) : (
             <>
@@ -44,7 +56,17 @@ export const PostImageVariantSelector = ({ post, index, busyKey, onGenerate, onS
 
   return (
     <div className="space-y-3 mb-4" data-testid={`mkt-image-selector-${index}`}>
-      <img src={selectedUrl} alt={post?.titulo} className="w-full aspect-square object-cover rounded-2xl" data-testid={`mkt-img-${index}`} />
+      <div className="relative w-full aspect-square rounded-2xl overflow-hidden bg-slate-900 border border-white/10">
+        <img 
+          src={selectedUrl} 
+          alt={post?.titulo} 
+          className="w-full h-full object-cover rounded-2xl" 
+          data-testid={`mkt-img-${index}`} 
+          onError={(e) => {
+            e.currentTarget.style.display = "none";
+          }}
+        />
+      </div>
 
       <div className="flex items-center justify-between gap-3 flex-wrap" data-testid={`mkt-image-selector-toolbar-${index}`}>
         <div className="flex items-center gap-2 flex-wrap">
@@ -71,7 +93,8 @@ export const PostImageVariantSelector = ({ post, index, busyKey, onGenerate, onS
       </div>
 
       <div className="grid grid-cols-3 gap-3" data-testid={`mkt-image-variants-${index}`}>
-        {variants.map((url, variantIndex) => {
+        {variants.map((rawUrl, variantIndex) => {
+          const url = resolveImageUrl(rawUrl);
           const selected = variantIndex === selectedIndex;
           return (
             <button
@@ -81,7 +104,14 @@ export const PostImageVariantSelector = ({ post, index, busyKey, onGenerate, onS
               className={`rounded-[18px] border p-2 text-left transition-colors ${selected ? "border-[#10B981] bg-[#10B981]/10" : "border-white/10 bg-white/[0.03] hover:bg-white/[0.05]"}`}
               data-testid={`mkt-image-variant-${index}-${variantIndex}`}
             >
-              <img src={url} alt={`${post?.titulo} variante ${variantIndex + 1}`} className="w-full aspect-square object-cover rounded-[14px] mb-2" data-testid={`mkt-image-variant-img-${index}-${variantIndex}`} />
+              <div className="relative w-full aspect-square rounded-[14px] overflow-hidden bg-slate-900 mb-2">
+                <img 
+                  src={url} 
+                  alt={`${post?.titulo} variante ${variantIndex + 1}`} 
+                  className="w-full h-full object-cover rounded-[14px]" 
+                  data-testid={`mkt-image-variant-img-${index}-${variantIndex}`} 
+                />
+              </div>
               <div className="flex items-center justify-between gap-2">
                 <span className="text-[11px] text-muted-foreground" data-testid={`mkt-image-variant-label-${index}-${variantIndex}`}>Opção {variantIndex + 1}</span>
                 <span className="inline-flex items-center gap-1 text-[11px] text-slate-200" data-testid={`mkt-image-variant-preview-${index}-${variantIndex}`}>

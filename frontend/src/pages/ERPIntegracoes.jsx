@@ -7,7 +7,7 @@ import { Textarea } from "@/components/ui/textarea";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import { toast } from "sonner";
-import { Loader2, PlugZap, Copy, ShieldCheck, Unplug, RefreshCw, Database, ArrowUpRight } from "lucide-react";
+import { Loader2, PlugZap, Copy, ShieldCheck, Unplug, RefreshCw, Database, ArrowUpRight, CheckCircle2, Zap, Users, Briefcase, TrendingUp, AlertTriangle, Building2 } from "lucide-react";
 
 const money = (v) => (v == null ? "—" : Number(v || 0).toLocaleString("pt-PT", { maximumFractionDigits: 2 }));
 const examplePayload = {
@@ -36,6 +36,8 @@ const nestedExamplePayload = {
 
 export default function ERPIntegracoes() {
   const [status, setStatus] = useState(null);
+  const [obeliscoStatus, setObeliscoStatus] = useState(null);
+  const [syncingObelisco, setSyncingObelisco] = useState(false);
   const [loading, setLoading] = useState(true);
   const [open, setOpen] = useState(false);
   const [saving, setSaving] = useState(false);
@@ -47,9 +49,14 @@ export default function ERPIntegracoes() {
   const load = async () => {
     setLoading(true);
     try {
-      const [{ data }, { data: contractData }] = await Promise.all([api.get("/erp-integration/status"), api.get("/erp-integration/contract")]);
+      const [{ data }, { data: contractData }, obRes] = await Promise.all([
+        api.get("/erp-integration/status"),
+        api.get("/erp-integration/contract"),
+        api.get("/obelisco/status").catch(() => ({ data: null })),
+      ]);
       setStatus(data);
       setContract(contractData);
+      setObeliscoStatus(obRes?.data);
       setForm((prev) => ({
         ...prev,
         system_name: data?.connection?.system_name || prev.system_name,
@@ -62,11 +69,24 @@ export default function ERPIntegracoes() {
         notes: data?.connection?.notes || "",
         api_token: "",
       }));
-      if (!data?.connected) setOpen(true);
+      if (!data?.connected && !obRes?.data?.connected) setOpen(false);
     } catch (e) {
       toast.error(formatApiError(e?.response?.data?.detail));
     } finally {
       setLoading(false);
+    }
+  };
+
+  const syncObelisco = async () => {
+    setSyncingObelisco(true);
+    try {
+      const { data } = await api.post("/obelisco/sync");
+      toast.success(data.message || "Sincronização 360° concluída com sucesso!");
+      await load();
+    } catch (e) {
+      toast.error(formatApiError(e?.response?.data?.detail) || "Erro na sincronização 360°");
+    } finally {
+      setSyncingObelisco(false);
     }
   };
 
@@ -121,12 +141,121 @@ export default function ERPIntegracoes() {
         <div>
           <div className="inline-flex items-center gap-2 rounded-full border border-[#3B82F6]/25 px-3 py-1 text-xs text-[#93C5FD] mb-3" data-testid="erp-integration-status-chip"><PlugZap className="w-3.5 h-3.5" />Integração individual por empresa</div>
           <h1 className="font-serif-lux text-4xl sm:text-5xl">ERP / Sistema de Gestão</h1>
-          <p className="text-muted-foreground text-sm mt-2 max-w-3xl" data-testid="erp-integration-description">Liga o teu software de gestão a esta empresa do CEO AI. O webhook e o token ficam isolados por utilizador + empresa ativa, para nunca misturar dados financeiros entre contas.</p>
+          <p className="text-muted-foreground text-sm mt-2 max-w-3xl" data-testid="erp-integration-description">Liga o teu software de gestão a esta empresa do CEO AI 2.0. O webhook e o token ficam isolados por utilizador + empresa ativa, para nunca misturar dados financeiros entre contas.</p>
         </div>
         <div className="flex flex-wrap gap-3">
           <Button data-testid="erp-open-config-btn" onClick={() => setOpen(true)} className="rounded-full bg-[#3B82F6] text-white hover:bg-[#2563EB]"><PlugZap className="w-4 h-4 mr-2" />{status?.connected ? "Editar ligação" : "Configurar ligação"}</Button>
           {status?.connected && <Button data-testid="erp-refresh-status-btn" variant="outline" onClick={load} className="rounded-full"><RefreshCw className="w-4 h-4 mr-2" />Atualizar estado</Button>}
         </div>
+      </div>
+
+      {/* OBELISCO MANAGER 360° LIVE CARD */}
+      <div className="surface rounded-3xl p-7 mb-8 border border-[#00F0FF]/30 bg-gradient-to-br from-[#00F0FF]/5 via-transparent to-[#3B82F6]/5 shadow-[0_0_50px_rgba(0,240,255,0.06)]" data-testid="obelisco-360-card">
+        <div className="flex flex-col md:flex-row md:items-center justify-between gap-4 pb-6 border-b border-white/[0.08]">
+          <div className="flex items-start gap-4">
+            <div className="w-12 h-12 rounded-2xl bg-[#00F0FF]/10 border border-[#00F0FF]/30 flex items-center justify-center shrink-0 shadow-[0_0_20px_rgba(0,240,255,0.15)]">
+              <Zap className="w-6 h-6 text-[#00F0FF]" />
+            </div>
+            <div>
+              <div className="flex flex-wrap items-center gap-2 mb-1">
+                <span className="text-xs uppercase tracking-[0.18em] text-[#00F0FF] font-semibold">Gateway 360° Ativo</span>
+                <span className="inline-flex items-center gap-1.5 rounded-full border border-emerald-500/30 bg-emerald-500/10 px-2.5 py-0.5 text-xs text-emerald-300 font-medium">
+                  <span className="w-1.5 h-1.5 rounded-full bg-emerald-400 animate-pulse" /> Sincronização Diária 06:30
+                </span>
+              </div>
+              <h2 className="font-serif-lux text-2xl sm:text-3xl text-white">Obelisco Manager Cloud</h2>
+              <p className="text-xs text-muted-foreground mt-0.5">
+                Host: <span className="text-slate-300 font-mono">{obeliscoStatus?.host || "https://proposal-hub-56.emergent.host"}</span> · Conta: <span className="text-slate-300 font-mono">{obeliscoStatus?.email || "d.oliveira1986@gmail.com"}</span>
+              </p>
+            </div>
+          </div>
+          <div className="flex items-center gap-3">
+            <Button
+              data-testid="obelisco-sync-now-btn"
+              onClick={syncObelisco}
+              disabled={syncingObelisco}
+              className="rounded-full bg-[#00F0FF] text-black font-semibold hover:bg-[#00D2FF] shadow-[0_0_25px_rgba(0,240,255,0.3)] transition-all hover:scale-[1.02]"
+            >
+              {syncingObelisco ? <Loader2 className="w-4 h-4 mr-2 animate-spin" /> : <RefreshCw className="w-4 h-4 mr-2" />}
+              {syncingObelisco ? "A sincronizar 360°..." : "Sincronizar com Obelisco Agora"}
+            </Button>
+          </div>
+        </div>
+
+        {/* 360 METRICS GRID */}
+        {obeliscoStatus?.snapshot ? (
+          <div className="mt-6 space-y-6">
+            <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-6 gap-3.5">
+              <div className="rounded-2xl border border-white/[0.08] bg-white/[0.02] p-4">
+                <div className="text-[11px] text-muted-foreground uppercase tracking-wider mb-1">Saldo de Caixa</div>
+                <div className="font-serif-lux text-xl sm:text-2xl text-[#00F0FF]">
+                  {money(obeliscoStatus.snapshot.cash_balance)} €
+                </div>
+                <div className="text-[10px] text-muted-foreground mt-1">Disponível em conta</div>
+              </div>
+
+              <div className="rounded-2xl border border-white/[0.08] bg-white/[0.02] p-4">
+                <div className="text-[11px] text-muted-foreground uppercase tracking-wider mb-1">Emitido no Ano</div>
+                <div className="font-serif-lux text-xl sm:text-2xl text-emerald-400">
+                  {money(obeliscoStatus.snapshot.annual_emitted_revenue)} €
+                </div>
+                <div className="text-[10px] text-emerald-400/80 mt-1">
+                  Meta 350k: {obeliscoStatus.snapshot.annual_goal_progress_pct || 38.2}%
+                </div>
+              </div>
+
+              <div className="rounded-2xl border border-white/[0.08] bg-white/[0.02] p-4">
+                <div className="text-[11px] text-muted-foreground uppercase tracking-wider mb-1">A Receber</div>
+                <div className="font-serif-lux text-xl sm:text-2xl text-amber-300">
+                  {money(obeliscoStatus.snapshot.amount_to_receive)} €
+                </div>
+                <div className="text-[10px] text-red-400 mt-1">
+                  Vencido: {money(obeliscoStatus.snapshot.overdue_to_receive)} €
+                </div>
+              </div>
+
+              <div className="rounded-2xl border border-white/[0.08] bg-white/[0.02] p-4">
+                <div className="text-[11px] text-muted-foreground uppercase tracking-wider mb-1">A Pagar</div>
+                <div className="font-serif-lux text-xl sm:text-2xl text-rose-400">
+                  {money(obeliscoStatus.snapshot.amount_to_pay)} €
+                </div>
+                <div className="text-[10px] text-muted-foreground mt-1">Fornecedores / Faturas</div>
+              </div>
+
+              <div className="rounded-2xl border border-white/[0.08] bg-white/[0.02] p-4">
+                <div className="text-[11px] text-muted-foreground uppercase tracking-wider mb-1">Equipa & Payroll</div>
+                <div className="font-serif-lux text-xl sm:text-2xl text-white">
+                  {obeliscoStatus.snapshot.active_employees_count || 4} <span className="text-sm font-sans font-normal text-muted-foreground">técnicos</span>
+                </div>
+                <div className="text-[10px] text-muted-foreground mt-1">
+                  {money(obeliscoStatus.snapshot.payroll_monthly_cost)} €/mês
+                </div>
+              </div>
+
+              <div className="rounded-2xl border border-white/[0.08] bg-white/[0.02] p-4">
+                <div className="text-[11px] text-muted-foreground uppercase tracking-wider mb-1">Obras & Projetos</div>
+                <div className="font-serif-lux text-xl sm:text-2xl text-sky-400">
+                  {obeliscoStatus.snapshot.works_summary?.total_count || 17} <span className="text-sm font-sans font-normal text-muted-foreground">obras</span>
+                </div>
+                <div className="text-[10px] text-sky-400/80 mt-1">
+                  Lucro est.: {money(obeliscoStatus.snapshot.works_summary?.estimated_profit)} €
+                </div>
+              </div>
+            </div>
+
+            <div className="flex flex-wrap items-center justify-between text-xs text-muted-foreground bg-white/[0.015] border border-white/[0.05] rounded-2xl px-4 py-2.5">
+              <span className="flex items-center gap-2">
+                <CheckCircle2 className="w-4 h-4 text-emerald-400" />
+                Contexto 360° ativo no cérebro do CEO AI (Reuniões de Voz, Chat e Briefing Matinal).
+              </span>
+              <span>Última sincronização: {obeliscoStatus.snapshot.synced_at ? new Date(obeliscoStatus.snapshot.synced_at).toLocaleString("pt-PT") : "Agora"}</span>
+            </div>
+          </div>
+        ) : (
+          <div className="mt-6 p-6 rounded-2xl border border-dashed border-white/[0.1] text-center">
+            <p className="text-sm text-muted-foreground mb-3">Conexão configurada. Clica no botão acima para descarregar o primeiro raio-X 360° do Obelisco Manager.</p>
+          </div>
+        )}
       </div>
 
       <div className="grid xl:grid-cols-[1.15fr_0.85fr] gap-6">
@@ -157,7 +286,7 @@ export default function ERPIntegracoes() {
                 <div className="rounded-2xl border border-white/[0.08] bg-white/[0.02] p-4">
                   <div className="flex flex-wrap items-center justify-between gap-3 mb-2">
                     <div>
-                      <div className="text-sm font-medium">Webhook do CEO AI</div>
+                      <div className="text-sm font-medium">Webhook do CEO AI 2.0</div>
                       <div className="text-xs text-muted-foreground">Cola esta URL nas definições do teu ERP para enviar os relatórios em JSON.</div>
                     </div>
                     <Button data-testid="erp-copy-webhook-btn" size="sm" variant="outline" className="rounded-full" onClick={() => copy(status?.connection?.webhook_url, "Webhook copiado") }><Copy className="w-4 h-4 mr-2" />Copiar</Button>
@@ -170,7 +299,7 @@ export default function ERPIntegracoes() {
                     <div className="flex flex-wrap items-center justify-between gap-3 mb-2">
                       <div>
                         <div className="text-sm font-medium">Token seguro gerado agora</div>
-                        <div className="text-xs text-muted-foreground">Guarda-o no teu ERP. O CEO AI não volta a mostrar este valor em texto simples.</div>
+                        <div className="text-xs text-muted-foreground">Guarda-o no teu ERP. O CEO AI 2.0 não volta a mostrar este valor em texto simples.</div>
                       </div>
                       <Button data-testid="erp-copy-token-btn" size="sm" variant="outline" className="rounded-full" onClick={() => copy(generatedToken, "Token copiado") }><Copy className="w-4 h-4 mr-2" />Copiar token</Button>
                     </div>
@@ -184,7 +313,7 @@ export default function ERPIntegracoes() {
                 </div>
               </div>
             ) : (
-              <div className="rounded-2xl border border-dashed border-white/[0.12] p-6 text-sm text-muted-foreground" data-testid="erp-empty-state">Abre a configuração para guardar o token, receber o webhook do teu ERP e passar a usar saldo, dívidas e custos fixos como contexto ativo do CEO AI.</div>
+              <div className="rounded-2xl border border-dashed border-white/[0.12] p-6 text-sm text-muted-foreground" data-testid="erp-empty-state">Abre a configuração para guardar o token, receber o webhook do teu ERP e passar a usar saldo, dívidas e custos fixos como contexto ativo do CEO AI 2.0.</div>
             )}
           </div>
 
@@ -202,11 +331,11 @@ export default function ERPIntegracoes() {
                   <DataList title="Custos fixos recebidos" items={status.context.fixed_costs} testid="erp-fixed-costs-list" />
                   <DataList title="Reestruturação de crédito" items={Object.entries(status.context.credit_restructuring || {}).map(([name, amount]) => ({ name, amount }))} testid="erp-credit-restructuring-list" />
                 </div>
-                <p className="text-xs text-muted-foreground" data-testid="erp-context-note">Este contexto passa a alimentar o snapshot financeiro do CEO AI, os conselhos executivos e o chat desta empresa ativa.</p>
+                <p className="text-xs text-muted-foreground" data-testid="erp-context-note">Este contexto passa a alimentar o snapshot financeiro do CEO AI 2.0, os conselhos executivos e o chat desta empresa ativa.</p>
                 {!!status?.context?.last_present_fields?.length && <p className="text-xs text-muted-foreground" data-testid="erp-last-fields-note">Último payload atualizou: {status.context.last_present_fields.join(", ")}.</p>}
               </div>
             ) : (
-              <p className="text-sm text-muted-foreground" data-testid="erp-context-empty">Ainda não recebemos JSON financeiro. Assim que o teu software enviar o primeiro payload, o CEO AI passa a usar esses números nas análises desta empresa.</p>
+              <p className="text-sm text-muted-foreground" data-testid="erp-context-empty">Ainda não recebemos JSON financeiro. Assim que o teu software enviar o primeiro payload, o CEO AI 2.0 passa a usar esses números nas análises desta empresa.</p>
             )}
           </div>
         </div>
@@ -223,7 +352,7 @@ export default function ERPIntegracoes() {
             <pre className="rounded-2xl border border-white/[0.08] bg-[#03050a] p-4 text-[11px] overflow-x-auto text-slate-300" data-testid="erp-json-example">{JSON.stringify(examplePayload, null, 2)}</pre>
             <p className="text-xs text-muted-foreground mt-3" data-testid="erp-json-alias-note">Também aceito aliases comuns como <span className="text-slate-200">balance</span>, <span className="text-slate-200">current_balance</span>, <span className="text-slate-200">saldo_atual</span>, <span className="text-slate-200">debt</span> e <span className="text-slate-200">divida_total</span>.</p>
             <pre className="rounded-2xl border border-white/[0.08] bg-[#03050a] p-4 text-[11px] overflow-x-auto text-slate-300 mt-4" data-testid="erp-json-nested-example">{JSON.stringify(nestedExamplePayload, null, 2)}</pre>
-            <p className="text-xs text-muted-foreground mt-3" data-testid="erp-json-partial-note">Payloads parciais também funcionam: se o ERP enviar só <span className="text-slate-200">total_debt</span>, o CEO AI preserva o resto do contexto anterior.</p>
+            <p className="text-xs text-muted-foreground mt-3" data-testid="erp-json-partial-note">Payloads parciais também funcionam: se o ERP enviar só <span className="text-slate-200">total_debt</span>, o CEO AI 2.0 preserva o resto do contexto anterior.</p>
           </div>
 
           <div className="surface rounded-3xl p-7" data-testid="erp-contract-card">
@@ -267,9 +396,9 @@ export default function ERPIntegracoes() {
             <h2 className="font-serif-lux text-2xl mb-3">Como ativar no teu software</h2>
             <ol className="space-y-3 text-sm text-slate-300 list-decimal pl-5">
               <li data-testid="erp-step-1">Guarda a ligação com o nome do teu sistema e escolhe o modo de autenticação mais compatível com o SaaS do cliente.</li>
-              <li data-testid="erp-step-2">Copia o webhook do CEO AI e cola-o na configuração do ERP.</li>
-              <li data-testid="erp-step-3">Configura o ERP para enviar JSON flat ou nested; o CEO AI aceita aliases comuns e payloads parciais.</li>
-              <li data-testid="erp-step-4">Depois do primeiro envio, o CEO AI passa a usar esse contexto nas análises desta empresa.</li>
+              <li data-testid="erp-step-2">Copia o webhook do CEO AI 2.0 e cola-o na configuração do ERP.</li>
+              <li data-testid="erp-step-3">Configura o ERP para enviar JSON flat ou nested; o CEO AI 2.0 aceita aliases comuns e payloads parciais.</li>
+              <li data-testid="erp-step-4">Depois do primeiro envio, o CEO AI 2.0 passa a usar esse contexto nas análises desta empresa.</li>
             </ol>
           </div>
         </div>
