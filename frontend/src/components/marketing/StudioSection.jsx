@@ -30,6 +30,7 @@ export const StudioSection = ({ products = [], campaigns = [], initialPost = nul
   const [variantB, setVariantB] = useState(null);
   const [generating, setGenerating] = useState(false);
   const [generatingVariants, setGeneratingVariants] = useState(false);
+  const [generatingImage, setGeneratingImage] = useState(false);
   const [savingPool, setSavingPool] = useState(false);
 
   useEffect(() => {
@@ -67,11 +68,30 @@ export const StudioSection = ({ products = [], campaigns = [], initialPost = nul
       setImageUrl(p.image_url || null);
       setImageVariants(p.image_variants || []);
       setVariantB(null);
-      toast.success("Post gerado pelo Studio com sucesso!");
+      toast.success("Post e Imagens gerados pelo Studio com sucesso!");
     } catch (e) {
       toast.error("Erro ao gerar post no Studio.");
     } finally {
       setGenerating(false);
+    }
+  };
+
+  const handleGenerateImageOnly = async () => {
+    setGeneratingImage(true);
+    try {
+      const res = await api.post("/marketing/studio/generate-image", {
+        prompt: visualBriefing || `${title || idea || "business commercial"} professional photography 8k`,
+        title: title || idea
+      });
+      if (res.data?.image_url) {
+        setImageUrl(res.data.image_url);
+        setImageVariants(prev => [res.data.image_url, ...(prev || [])]);
+        toast.success("Nova imagem gerada pela IA!");
+      }
+    } catch (e) {
+      toast.error("Erro ao gerar imagem.");
+    } finally {
+      setGeneratingImage(false);
     }
   };
 
@@ -300,16 +320,57 @@ export const StudioSection = ({ products = [], campaigns = [], initialPost = nul
               </div>
 
               {/* Preview de Imagem */}
-              <div className="mt-3 relative rounded-xl overflow-hidden bg-black/40 border border-white/10 aspect-square flex items-center justify-center">
+              <div className="mt-3 relative rounded-xl overflow-hidden bg-black/40 border border-white/10 aspect-square flex flex-col items-center justify-center group">
                 {imageUrl ? (
-                  <img src={imageUrl} alt="Preview" className="w-full h-full object-cover" />
+                  <>
+                    <img src={imageUrl} alt="Preview" className="w-full h-full object-cover" />
+                    <div className="absolute inset-0 bg-black/50 opacity-0 group-hover:opacity-100 transition-opacity flex items-center justify-center p-4">
+                      <Button
+                        size="sm"
+                        onClick={handleGenerateImageOnly}
+                        disabled={generatingImage}
+                        className="rounded-xl bg-pink-600 hover:bg-pink-500 text-white font-bold text-xs shadow-lg"
+                      >
+                        {generatingImage ? <Loader2 className="w-3.5 h-3.5 animate-spin mr-1.5" /> : <Sparkles className="w-3.5 h-3.5 mr-1.5" />}
+                        Gerar Nova Imagem com IA
+                      </Button>
+                    </div>
+                  </>
                 ) : (
-                  <div className="text-center p-4">
-                    <ImageIcon className="w-8 h-8 text-slate-600 mx-auto mb-2" />
-                    <p className="text-xs text-slate-400">A imagem profissional gerada pela IA aparecerá aqui.</p>
+                  <div className="text-center p-4 space-y-3">
+                    <ImageIcon className="w-8 h-8 text-slate-600 mx-auto" />
+                    <p className="text-xs text-slate-400">Nenhuma imagem selecionada ainda.</p>
+                    <Button
+                      size="sm"
+                      variant="outline"
+                      onClick={handleGenerateImageOnly}
+                      disabled={generatingImage}
+                      className="rounded-xl border-pink-500/30 text-pink-300 hover:bg-pink-500/10 text-xs font-semibold"
+                    >
+                      {generatingImage ? <Loader2 className="w-3.5 h-3.5 animate-spin mr-1.5" /> : <Sparkles className="w-3.5 h-3.5 mr-1.5" />}
+                      Gerar Imagem com IA
+                    </Button>
                   </div>
                 )}
               </div>
+
+              {/* Seletor de Variantes de Imagem */}
+              {imageVariants.length > 1 && (
+                <div className="mt-2 flex items-center gap-2 overflow-x-auto pb-1">
+                  <span className="text-[10px] uppercase font-bold text-slate-400">Variantes:</span>
+                  {imageVariants.map((vUrl, vIdx) => (
+                    <div
+                      key={vIdx}
+                      onClick={() => setImageUrl(vUrl)}
+                      className={`w-10 h-10 rounded-lg overflow-hidden border cursor-pointer transition-all shrink-0 ${
+                        imageUrl === vUrl ? "border-pink-500 ring-2 ring-pink-500/50" : "border-white/10 opacity-60 hover:opacity-100"
+                      }`}
+                    >
+                      <img src={vUrl} alt={`Var ${vIdx + 1}`} className="w-full h-full object-cover" />
+                    </div>
+                  ))}
+                </div>
+              )}
 
               {/* Texto do Post */}
               <div className="mt-3 space-y-2 text-xs">

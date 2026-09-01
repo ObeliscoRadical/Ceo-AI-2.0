@@ -24,6 +24,7 @@ from core import (
     logger,
     premium_user,
     resolve_company,
+    UPLOAD_DIR,
 )
 
 router = APIRouter()
@@ -674,10 +675,16 @@ Gere um post completo de alta qualidade e pronto a publicar em formato JSON:
     image_variants = []
     if payload.get("generate_image", True):
         try:
-            brief = result.get("visual_briefing") or f"{company.get('sector', 'Business')} professional scene"
-            imgs = await generate_marketing_images(brief, count=2)
-            if imgs:
-                image_variants = imgs
+            brief = result.get("visual_briefing") or f"{prod.get('name', 'Professional')} {company.get('sector', 'Business')} commercial photography, cinematic lighting, 8k"
+            topic_q = result.get("title") or prod.get("name") or company.get("sector") or "commercial service"
+            raw_imgs = await generate_marketing_images(brief, number_of_images=2, topic_query=topic_q)
+            for img_data in raw_imgs:
+                if isinstance(img_data, bytes) and len(img_data) > 500:
+                    fname = f"studio_img_{uuid.uuid4().hex[:12]}.png"
+                    (UPLOAD_DIR / fname).write_bytes(img_data)
+                    image_variants.append(f"/uploads/{fname}")
+                elif isinstance(img_data, str) and img_data.startswith(("http", "/")):
+                    image_variants.append(img_data)
         except Exception as e:
             logger.warning(f"Erro ao gerar imagem para post do studio: {e}")
             
@@ -701,6 +708,23 @@ Gere um post completo de alta qualidade e pronto a publicar em formato JSON:
         "variant_type": "A"
     }
     return {"post": out_post}
+
+
+@router.post("/marketing/studio/generate-image")
+async def generate_single_studio_image(payload: Dict[str, Any], user: dict = Depends(premium_user)):
+    """Gera uma imagem para o post do Studio sob demanda."""
+    prompt = payload.get("prompt") or payload.get("visual_briefing") or "professional modern commercial business photography, 8k"
+    topic_q = payload.get("title") or payload.get("topic") or "business"
+    try:
+        raw_imgs = await generate_marketing_images(prompt, number_of_images=1, topic_query=topic_q)
+        if raw_imgs and len(raw_imgs[0]) > 500:
+            fname = f"studio_img_{uuid.uuid4().hex[:12]}.png"
+            (UPLOAD_DIR / fname).write_bytes(raw_imgs[0])
+            return {"image_url": f"/uploads/{fname}"}
+    except Exception as e:
+        logger.error(f"Erro ao gerar imagem individual: {e}")
+        raise HTTPException(status_code=500, detail=f"Erro ao gerar imagem: {e}")
+    raise HTTPException(status_code=500, detail="Não foi possível gerar a imagem")
 
 
 @router.post("/marketing/studio/generate-variants")
