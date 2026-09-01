@@ -63,6 +63,16 @@ def _serialize(doc: Any) -> Any:
     return doc
 
 
+async def _safe_ai_json(system: str, prompt: str, fallback: dict = None) -> dict:
+    try:
+        res = await ai_json(system, prompt)
+        if isinstance(res, dict) and res:
+            return res
+    except Exception as e:
+        logger.warning(f"AI JSON call failed: {e}")
+    return fallback or {}
+
+
 # ============================================================================
 # PYDANTIC SCHEMAS
 # ============================================================================
@@ -273,8 +283,8 @@ async def enhance_product_ai(payload: Dict[str, Any], user: dict = Depends(premi
     company = await resolve_company(uid) or {}
     sector = company.get("sector") or "Empresarial"
     
-    prompt = f"""Atue como Diretor de Marketing Estratégico Especialista em Posicionamento de Alto Valor.
-Empresa: {company.get('name', 'Empresa')} | Setor: {sector}
+    system = "Atue como Diretor de Marketing Estratégico Especialista em Posicionamento de Alto Valor."
+    prompt = f"""Empresa: {company.get('name', 'Empresa')} | Setor: {sector}
 Dados do produto/serviço fornecidos:
 Nome: {payload.get('name', '')}
 Categoria: {payload.get('category', 'Serviço')}
@@ -293,15 +303,15 @@ Retorne um JSON estruturado com:
   "recommended_channels": ["Instagram", "Facebook", "LinkedIn"]
 }}
 """
-    result = await ai_json(prompt, fallback={
-        "enhanced_description": payload.get("description", ""),
-        "target_audience": "Decisores e clientes que valorizam rapidez e qualidade",
-        "main_pain": "Falta de tempo e necessidade de execução profissional sem falhas",
-        "value_prop": "Solução completa e sem complicações com acompanhamento especializado",
-        "offer": "Diagnóstico inicial sem compromisso com proposta em 24h",
-        "cta": "Pedir Proposta Imediata",
-        "positioning": "Especialista de Confiança",
-        "recommended_channels": ["Instagram", "Facebook"]
+    result = await _safe_ai_json(system, prompt, fallback={
+        "enhanced_description": payload.get("description", "") or f"Solução completa de {payload.get('name', 'serviço')} com garantia e acompanhamento técnico.",
+        "target_audience": "Decisores e clientes que valorizam rapidez, segurança e qualidade técnica.",
+        "main_pain": "Paragens não programadas, custos ocultos e falta de assistência especializada.",
+        "value_prop": "Execução certificada e transparente com máxima fiabilidade operacional.",
+        "offer": "Auditoria inicial sem compromisso e orçamento detalhado em 24h.",
+        "cta": "Pedir Proposta Sem Compromisso",
+        "positioning": "Especialista de Confiança e Alto Desempenho",
+        "recommended_channels": ["Instagram", "Facebook", "LinkedIn"]
     })
     return {"enhanced": result}
 
@@ -422,8 +432,8 @@ async def campaign_wizard_assistant(payload: Dict[str, Any], user: dict = Depend
         except Exception:
             pass
             
-    prompt = f"""Atue como Diretor de Marketing Estratégico no Wizard de Criação de Campanhas.
-Empresa: {company.get('name', 'Empresa')} | Setor: {company.get('sector', 'Geral')}
+    system = "Atue como Diretor de Marketing Estratégico no Wizard de Criação de Campanhas."
+    prompt = f"""Empresa: {company.get('name', 'Empresa')} | Setor: {company.get('sector', 'Geral')}
 Produto Selecionado: {product_data.get('name', 'Produto Principal')} ({product_data.get('category', '')})
 Proposta de Valor: {product_data.get('value_prop', '')}
 Dor Principal: {product_data.get('main_pain', '')}
@@ -447,7 +457,7 @@ Retorne em formato JSON:
   "insights_for_step": ["Dica prática 1", "Dica prática 2"]
 }}
 """
-    result = await ai_json(prompt, fallback={
+    result = await _safe_ai_json(system, prompt, fallback={
         "step": step,
         "suggested_title": f"Campanha {product_data.get('name', 'Comercial')} · {objective.capitalize()}",
         "suggested_audience": product_data.get("target_audience") or "Decisores locais e clientes qualificados",
@@ -496,8 +506,8 @@ async def generate_marketing_strategy(inp: MarketingCreatorIn, user: dict = Depe
     growth_insights = await db.marketing_growth_insights.find({"user_id": uid, "company_id": cid}).sort("created_at", -1).to_list(5)
     insights_text = "\n".join([f"- {i.get('insight')}" for i in growth_insights]) if growth_insights else "Sem histórico prévio."
 
-    prompt = f"""Atue como Diretor de Marketing Estratégico de Elite (COIA Strategy Engine).
-Empresa: {company.get('name', 'Empresa')} | Setor: {company.get('sector', 'Serviços/Geral')}
+    system = "Atue como Diretor de Marketing Estratégico de Elite (COIA Strategy Engine)."
+    prompt = f"""Empresa: {company.get('name', 'Empresa')} | Setor: {company.get('sector', 'Serviços/Geral')}
 Produto/Serviço: {prod.get('name', 'Oferta Principal')} ({prod.get('category', 'Serviço')})
 Preço/Ticket: {prod.get('price', 'Sob consulta')}
 Proposta de Valor: {prod.get('value_prop', '')}
@@ -550,7 +560,7 @@ Gere uma matriz de marketing completa e acionável em formato JSON rigoroso:
   ]
 }}
 """
-    result = await ai_json(prompt, fallback={
+    result = await _safe_ai_json(system, prompt, fallback={
         "positioning_statement": f"A referência em {company.get('sector', 'qualidade')} para quem exige rapidez e rigor.",
         "core_message": f"Resolvemos a sua necessidade de {prod.get('name', 'serviço')} com garantia total de execução.",
         "angles": [
@@ -629,8 +639,8 @@ async def generate_studio_post(payload: Dict[str, Any], user: dict = Depends(pre
         except Exception:
             pass
 
-    prompt = f"""Atue como Redator Executivo e Criador de Conteúdo para Redes Sociais no Studio COIA.
-Empresa: {company.get('name', 'Empresa')} | Setor: {company.get('sector', 'Serviços/Geral')}
+    system = "Atue como Redator Executivo e Criador de Conteúdo para Redes Sociais no Studio COIA."
+    prompt = f"""Empresa: {company.get('name', 'Empresa')} | Setor: {company.get('sector', 'Serviços/Geral')}
 Produto Associado: {prod.get('name', 'Oferta')} | Preço: {prod.get('price', 'n/d')} | Proposta: {prod.get('value_prop', '')}
 Campanha Associada: {camp.get('name', 'Geral')} | Oferta: {camp.get('offer', prod.get('offer', ''))}
 Rede Social: {network}
@@ -651,7 +661,7 @@ Gere um post completo de alta qualidade e pronto a publicar em formato JSON:
   "structure_breakdown": {{"intro": "Gancho inicial", "body": "Desenvolvimento do valor", "climax": "Oferta / Prova", "outro": "CTA"}}
 }}
 """
-    result = await ai_json(prompt, fallback={
+    result = await _safe_ai_json(system, prompt, fallback={
         "title": f"Destaque {prod.get('name', 'Serviço')}",
         "hook": f"Sabia que pode poupar tempo e evitar problemas com {prod.get('name', 'a nossa solução')}?",
         "caption": f"Na {company.get('name', 'nossa empresa')}, garantimos excelência e rigor em cada detalhe.\n\nSe procura segurança e cumprimento de prazos, fale connosco hoje mesmo.",
@@ -698,8 +708,8 @@ async def generate_post_variants(payload: Dict[str, Any], user: dict = Depends(p
     """Gera variantes A/B a partir de um post base para teste de hooks, CTAs e copy."""
     base_post = payload.get("post", {})
     
-    prompt = f"""Atue como Especialista em Testes A/B e Otimização de Conversão (CRO).
-Post Original (Variante A):
+    system = "Atue como Especialista em Testes A/B e Otimização de Conversão (CRO)."
+    prompt = f"""Post Original (Variante A):
 Título: {base_post.get('title')}
 Hook: {base_post.get('hook')}
 Legenda: {base_post.get('caption')}
@@ -724,7 +734,7 @@ Retorne em formato JSON:
   }}
 }}
 """
-    result = await ai_json(prompt, fallback={
+    result = await _safe_ai_json(system, prompt, fallback={
         "variant_b": {
             "title": f"{base_post.get('title')} (Variante B)",
             "hook": f"Aviso importante sobre {base_post.get('title')}: não cometa este erro.",
