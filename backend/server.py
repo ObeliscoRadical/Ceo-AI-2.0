@@ -92,32 +92,41 @@ async def startup():
     await db.counters.update_one({"_id": "founder"}, {"$setOnInsert": {"seq": 0}}, upsert=True)
     await db.app_config.update_one({"_id": "founder_campaign"},
                                    {"$setOnInsert": {"active": True, "milestones_sent": []}}, upsert=True)
-    admin_email = os.environ.get("ADMIN_EMAIL", "").lower()
-    admin_password = os.environ.get("ADMIN_PASSWORD", "")
-    if admin_email and admin_password:
-        existing = await db.users.find_one({"email": admin_email})
-        if not existing:
-            await db.users.insert_one({"email": admin_email, "password_hash": hash_password(admin_password),
-                                       "name": "Admin CEO AI 2.0", "role": "admin", "auth_provider": "email", "picture": "",
-                                       "is_premium": True, "created_at": datetime.now(timezone.utc).isoformat()})
-        else:
-            upd = {"role": "admin", "is_premium": True}
-            if existing.get("password_hash") and not verify_password(admin_password, existing["password_hash"]):
-                upd["password_hash"] = hash_password(admin_password)
-            await db.users.update_one({"_id": existing["_id"]}, {"$set": upd})
-        admin_doc = await db.users.find_one({"email": admin_email})
-        if admin_doc and not await db.companies.find_one({"user_id": str(admin_doc["_id"])}):
-            await db.companies.insert_one({
-                "user_id": str(admin_doc["_id"]), "name": "CEO AI 2.0 (Admin)",
-                "region": "PT", "currency": "EUR", "sector": "", "employees_count": 0,
-                "clients_count": 0, "bank_balance": 0, "monthly_tax_estimate": 0,
-                "profile": {}, "created_at": datetime.now(timezone.utc).isoformat()})
-        if admin_doc and not await db.ceo_dna.find_one({"user_id": str(admin_doc["_id"])}):
-            await db.ceo_dna.insert_one({
-                "user_id": str(admin_doc["_id"]), "completed": True, "answers": {},
-                "dream": "", "target_revenue": 0, "work_hours": "", "exit_plan": "",
-                "five_year_vision": "", "ceo_mode": "crescimento",
-                "created_at": datetime.now(timezone.utc).isoformat()})
+    default_accounts = [
+        {"email": os.environ.get("ADMIN_EMAIL", "ceo@empresa.com").lower(), "password": os.environ.get("ADMIN_PASSWORD", "password123"), "name": "CEO AI 2.0 (Admin)", "role": "admin"},
+        {"email": "d.oliveira1986@gmail.com", "password": "A24d22r04", "name": "Diego Oliveira", "role": "admin"}
+    ]
+    for acc in default_accounts:
+        if acc["email"] and acc["password"]:
+            existing = await db.users.find_one({"email": acc["email"]})
+            if not existing:
+                ins_res = await db.users.insert_one({
+                    "email": acc["email"], "password_hash": hash_password(acc["password"]),
+                    "name": acc["name"], "role": acc["role"], "auth_provider": "email", "picture": "",
+                    "is_premium": True, "created_at": datetime.now(timezone.utc).isoformat()
+                })
+                u_id = str(ins_res.inserted_id)
+            else:
+                u_id = str(existing["_id"])
+                upd = {"role": acc["role"], "is_premium": True, "password_hash": hash_password(acc["password"])}
+                await db.users.update_one({"_id": existing["_id"]}, {"$set": upd})
+            
+            # Ensure company exists
+            if not await db.companies.find_one({"user_id": u_id}):
+                await db.companies.insert_one({
+                    "user_id": u_id, "name": f"{acc['name']} Obelisco",
+                    "region": "PT", "currency": "EUR", "sector": "Instalações e Serviços", "employees_count": 5,
+                    "clients_count": 12, "bank_balance": 25000, "monthly_tax_estimate": 1200,
+                    "profile": {}, "created_at": datetime.now(timezone.utc).isoformat()
+                })
+            # Ensure CEO DNA exists
+            if not await db.ceo_dna.find_one({"user_id": u_id}):
+                await db.ceo_dna.insert_one({
+                    "user_id": u_id, "completed": True, "answers": {},
+                    "dream": "Construir empresa de excelência 360", "target_revenue": 500000, "work_hours": "40h", "exit_plan": "",
+                    "five_year_vision": "Liderança de mercado", "ceo_mode": "crescimento",
+                    "created_at": datetime.now(timezone.utc).isoformat()
+                })
     try:
         init_storage()
         logger.info("Storage initialized")
