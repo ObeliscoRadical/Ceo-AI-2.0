@@ -14,12 +14,12 @@ from apscheduler.triggers.cron import CronTrigger
 from datetime import datetime, timezone
 
 from core import db, client, hash_password, verify_password, init_storage, send_daily_briefings, send_monthly_value_alerts, send_goal_alerts, logger, UPLOAD_DIR
-from routers import auth, companies, finance, ceo, documents, billing, misc, voice, founders, goals, council, crm, marketing, marketing_autonomous, social, prospecting, notifications, grants, erp_integrations, site_publishing, growth_agent, obelisco_sync
+from routers import auth, companies, finance, ceo, documents, billing, misc, voice, founders, goals, council, crm, marketing, marketing_autonomous, social, prospecting, notifications, grants, erp_integrations, site_publishing, growth_agent, obelisco_sync, marketing_pipeline
 
 app = FastAPI()
 app.mount("/uploads", StaticFiles(directory=str(UPLOAD_DIR)), name="uploads")
 api_router = APIRouter(prefix="/api")
-for _m in (auth, companies, finance, ceo, documents, billing, misc, voice, founders, goals, council, crm, marketing, marketing_autonomous, social, prospecting, notifications, grants, erp_integrations, site_publishing, growth_agent, obelisco_sync):
+for _m in (auth, companies, finance, ceo, documents, billing, misc, voice, founders, goals, council, crm, marketing, marketing_autonomous, social, prospecting, notifications, grants, erp_integrations, site_publishing, growth_agent, obelisco_sync, marketing_pipeline):
     api_router.include_router(_m.router)
 app.include_router(api_router)
 
@@ -79,6 +79,16 @@ async def startup():
     await db.erp_events.create_index([("endpoint_id", 1), ("event_key", 1)], unique=True)
     await db.erp_events.create_index([("user_id", 1), ("company_id", 1), ("received_at", -1)])
     await db.erp_financial_contexts.create_index([("user_id", 1), ("company_id", 1)], unique=True)
+    await db.marketing_products.create_index([("user_id", 1), ("company_id", 1), ("created_at", -1)])
+    await db.marketing_content_pool.create_index([("user_id", 1), ("company_id", 1), ("status", 1)])
+    await db.marketing_content_pool.create_index([("user_id", 1), ("company_id", 1), ("product_id", 1)])
+    await db.marketing_content_pool.create_index([("user_id", 1), ("company_id", 1), ("campaign_id", 1)])
+    await db.marketing_schedule_slots.create_index([("user_id", 1), ("company_id", 1), ("scheduled_at", 1)])
+    await db.marketing_posting_plans.create_index([("user_id", 1), ("company_id", 1)], unique=True)
+    await db.marketing_experiments.create_index([("user_id", 1), ("company_id", 1), ("created_at", -1)])
+    await db.marketing_autopilot_config.create_index([("user_id", 1), ("company_id", 1)], unique=True)
+    await db.marketing_autopilot_logs.create_index([("user_id", 1), ("company_id", 1), ("created_at", -1)])
+    await db.marketing_growth_insights.create_index([("user_id", 1), ("company_id", 1), ("created_at", -1)])
     await db.counters.update_one({"_id": "founder"}, {"$setOnInsert": {"seq": 0}}, upsert=True)
     await db.app_config.update_one({"_id": "founder_campaign"},
                                    {"$setOnInsert": {"active": True, "milestones_sent": []}}, upsert=True)
