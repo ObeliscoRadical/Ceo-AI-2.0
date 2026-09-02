@@ -1052,12 +1052,13 @@ async def _social_media_agent_payload(uid: str, cid: Optional[str]):
         last_activity = published_rows[0].get("created_at")
 
     blockers = []
-    if not social.get("configured"):
-        blockers.append("A app Meta ainda não está configurada com credenciais reais.")
-    elif social.get("connection_state") == "pending_selection":
-        blockers.append("A ligação Meta foi autorizada, mas ainda falta escolher a Página certa.")
-    elif not social.get("connected"):
-        blockers.append("Ligue primeiro o Facebook/Instagram da empresa ativa.")
+    if not social.get("connected"):
+        if not social.get("configured"):
+            blockers.append("A app Meta ainda não está configurada com credenciais reais.")
+        elif social.get("connection_state") == "pending_selection":
+            blockers.append("A ligação Meta foi autorizada, mas ainda falta escolher a Página certa.")
+        else:
+            blockers.append("Ligue primeiro o Facebook/Instagram da empresa ativa.")
     elif not social.get("publish_ready_facebook"):
         blockers.append("A Página Meta ligada ainda não tem tasks de publicação suficientes.")
     if not posts:
