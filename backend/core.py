@@ -241,17 +241,27 @@ async def search_topic_exact_images(query: str, count: int = 3) -> list[bytes]:
     return results
 
 async def generate_marketing_images(prompt: str = "", number_of_images: int = 3, scene_prompts: list[str] = None, topic_query: str = "") -> list[bytes]:
-    """Gera 1..N imagens de marketing estritamente fiéis ao gancho, produto e tema."""
+    """Gera 1..N imagens de marketing ultra-realistas com qualidade editorial fotográfica de topo."""
     count = max(1, min(int(number_of_images or 3), 4))
     
+    # Prefixos fotográficos de alta fidelidade cinematográfica (estilo Sony A7R / Hasselblad)
+    PHOTO_ENHANCERS = [
+        "captured on 35mm Hasselblad H6D-100c, 85mm f/1.4 portrait lens, soft natural window lighting, rich skin textures, authentic expressions, hyper-detailed, award-winning editorial commercial photography, 8k uhd, cinematic color grading, photorealistic, no illustration, no 3d render, no anime, no text, no watermark",
+        "captured on Sony A7R V, 50mm f/1.2 G Master lens, cinematic warm golden hour ambient lighting, subtle depth of field, authentic real-life environment, sharp focus on subject, commercial advertising photography, 8k, hyper-realistic, no cartoon, no CGI, no watermark, no text",
+        "captured on Leica SL2, 24-70mm f/2.8 lens, modern architectural corporate lighting, crisp details, natural realistic shadows, depth, high dynamic range, hyperrealistic editorial photoshoot, 8k, pristine quality, no drawing, no CGI, no watermark, no text"
+    ]
+    
     if not scene_prompts:
-        clean_p = prompt or "business owner in modern office managing operations"
-        # Garante enriquecimento fotográfico se prompt for simples
+        clean_p = prompt or "successful professional entrepreneur managing operations in high-end modern workspace"
         scene_prompts = [
-            f"{clean_p}, medium commercial photography shot, natural lighting, shallow depth of field, 8k, photorealistic, sharp focus, no text, no watermark, no CGI, no abstract",
-            f"{clean_p}, close up detailed shot, crisp lighting, cinematic depth, 8k, photorealistic, sharp focus, no text, no watermark, no CGI, no abstract",
-            f"{clean_p}, wide angle modern editorial photography, crisp details, 8k, photorealistic, no text, no watermark, no CGI, no abstract"
-        ][:count]
+            f"{clean_p}, {PHOTO_ENHANCERS[i % len(PHOTO_ENHANCERS)]}"
+            for i in range(count)
+        ]
+    else:
+        scene_prompts = [
+            f"{sp}, {PHOTO_ENHANCERS[i % len(PHOTO_ENHANCERS)]}"
+            for i, sp in enumerate(scene_prompts[:count])
+        ]
     
     results = []
     headers = {"User-Agent": "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36"}
@@ -261,12 +271,12 @@ async def generate_marketing_images(prompt: str = "", number_of_images: int = 3,
         for idx, scene in enumerate(scene_prompts[:count]):
             img_bytes = None
             base_seed = int(time.time() * 1000) % 1000000 + (idx * 337)
-            enc_scene = urllib.parse.quote(scene[:380])
+            enc_scene = urllib.parse.quote(scene[:420])
 
-            # 1. Tentar Pollinations AI (Flux, com retry antes de cair para turbo/fallback)
-            attempts = [("flux", base_seed), ("flux", base_seed + 1), ("turbo", base_seed + 2)]
+            # 1. Tentar Pollinations AI (Flux Pro / Flux Realism com seeds variadas)
+            attempts = [("flux-realism", base_seed), ("flux", base_seed + 1), ("flux-pro", base_seed + 2), ("turbo", base_seed + 3)]
             for model_name, seed in attempts:
-                poll_url = f"https://image.pollinations.ai/prompt/{enc_scene}?width=1080&height=1080&seed={seed}&nologo=true&model={model_name}"
+                poll_url = f"https://image.pollinations.ai/prompt/{enc_scene}?width=1080&height=1080&seed={seed}&nologo=true&model={model_name}&enhance=true"
                 try:
                     res = await client.get(poll_url)
                     if res.status_code == 200 and len(res.content) > 5000 and not res.content.startswith(b'{"error"'):
