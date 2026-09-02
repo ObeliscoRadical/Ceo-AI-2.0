@@ -652,7 +652,7 @@ async def record_marketing_metrics(uid: str, cid: str, social_post_doc: dict, po
     if not (uid and cid and social_post_doc):
         return None
     post = post or {}
-    channels = [channel for channel, result in (social_post_doc.get("results") or {}).items() if result.get("ok")]
+    channels = [channel for channel, result in (social_post_doc.get("results") or {}).items() if isinstance(result, dict) and result.get("ok")]
     published_at = social_post_doc.get("created_at") or datetime.now(timezone.utc).isoformat()
     metrics = ((live_metrics or {}).get("metrics") or build_mock_metrics(post, published_at, channels))
     mocked = not bool(live_metrics and (live_metrics.get("metrics") or {}))
