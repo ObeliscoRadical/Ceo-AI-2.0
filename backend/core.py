@@ -256,14 +256,16 @@ async def generate_marketing_images(prompt: str = "", number_of_images: int = 3,
     results = []
     headers = {"User-Agent": "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36"}
 
-    async with httpx.AsyncClient(timeout=14.0, follow_redirects=True, headers=headers) as client:
+    poll_timeout = httpx.Timeout(90.0, connect=15.0)
+    async with httpx.AsyncClient(timeout=poll_timeout, follow_redirects=True, headers=headers) as client:
         for idx, scene in enumerate(scene_prompts[:count]):
             img_bytes = None
-            seed = int(time.time() * 1000) % 1000000 + (idx * 337)
+            base_seed = int(time.time() * 1000) % 1000000 + (idx * 337)
             enc_scene = urllib.parse.quote(scene[:380])
 
-            # 1. Tentar Pollinations AI com modelo Flux
-            for model_name in ["flux", "turbo"]:
+            # 1. Tentar Pollinations AI (Flux, com retry antes de cair para turbo/fallback)
+            attempts = [("flux", base_seed), ("flux", base_seed + 1), ("turbo", base_seed + 2)]
+            for model_name, seed in attempts:
                 poll_url = f"https://image.pollinations.ai/prompt/{enc_scene}?width=1080&height=1080&seed={seed}&nologo=true&model={model_name}"
                 try:
                     res = await client.get(poll_url)
