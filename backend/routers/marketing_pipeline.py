@@ -683,6 +683,17 @@ Retorne em formato JSON:
                 if isinstance(img_data, bytes) and len(img_data) > 500:
                     fname = f"studio_img_{uuid.uuid4().hex[:12]}.png"
                     (UPLOAD_DIR / fname).write_bytes(img_data)
+                    b64_str = base64.b64encode(img_data).decode()
+                    await db.uploaded_files.update_one(
+                        {"filename": fname},
+                        {"$set": {"data": b64_str, "content_type": "image/png", "created_at": datetime.now(timezone.utc).isoformat()}},
+                        upsert=True
+                    )
+                    await db.social_media.update_one(
+                        {"_id": fname},
+                        {"$set": {"user_id": uid, "filename": fname, "data": b64_str, "content_type": "image/png", "created_at": datetime.now(timezone.utc).isoformat()}},
+                        upsert=True
+                    )
                     image_variants.append(f"/uploads/{fname}")
                 elif isinstance(img_data, str) and img_data.startswith(("http", "/")):
                     image_variants.append(img_data)
@@ -965,7 +976,30 @@ async def generate_single_studio_image(payload: Dict[str, Any], user: dict = Dep
         if raw_imgs and len(raw_imgs[0]) > 500:
             fname = f"studio_img_{uuid.uuid4().hex[:12]}.png"
             (UPLOAD_DIR / fname).write_bytes(raw_imgs[0])
-            return {"image_url": f"/uploads/{fname}"}
+            b64_str = base64.b64encode(raw_imgs[0]).decode()
+            await db.uploaded_files.update_one(
+                {"filename": fname},
+                {"$set": {"data": b64_str, "content_type": "image/png", "created_at": datetime.now(timezone.utc).isoformat()}},
+                upsert=True
+            )
+            await db.social_media.update_one(
+                {"_id": fname},
+                {"$set": {"user_id": uid, "filename": fname, "data": b64_str, "content_type": "image/png", "created_at": datetime.now(timezone.utc).isoformat()}},
+                upsert=True
+            )
+            img_url = f"/uploads/{fname}"
+            
+            content_id = payload.get("content_id") or payload.get("id")
+            if content_id:
+                try:
+                    await db.marketing_content_pool.update_one(
+                        {"_id": ObjectId(content_id), "user_id": uid},
+                        {"$set": {"image_url": img_url}, "$addToSet": {"image_variants": img_url}}
+                    )
+                except Exception:
+                    pass
+                    
+            return {"ok": True, "image_url": img_url}
     except Exception as e:
         logger.error(f"Erro ao gerar imagem individual: {e}")
         raise HTTPException(status_code=500, detail=f"Erro ao gerar imagem: {e}")

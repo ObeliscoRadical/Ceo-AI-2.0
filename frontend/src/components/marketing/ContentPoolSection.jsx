@@ -8,6 +8,7 @@ export const ContentPoolSection = ({ poolData = {}, products = [], campaigns = [
   const [filterStatus, setFilterStatus] = useState("ALL");
   const [filterProduct, setFilterProduct] = useState("ALL");
   const [filterCampaign, setFilterCampaign] = useState("ALL");
+  const [generatingImgId, setGeneratingImgId] = useState(null);
 
   const items = poolData.items || [];
   const counts = poolData.counts || {};
@@ -20,6 +21,28 @@ export const ContentPoolSection = ({ poolData = {}, products = [], campaigns = [
       onRefresh();
     } catch (e) {
       toast.error("Erro ao atualizar estado.");
+    }
+  };
+
+  const handleGenerateImageForPoolItem = async (item) => {
+    setGeneratingImgId(item.id);
+    try {
+      const res = await api.post("/marketing/studio/generate-image", {
+        content_id: item.id,
+        hook: item.hook || "",
+        title: item.title || "",
+        caption: item.caption || "",
+        visual_briefing: item.visual_briefing || "",
+        product_name: item.product_name || "",
+      });
+      if (res.data?.image_url) {
+        toast.success("Imagem gerada e vinculada com sucesso ao post!");
+        onRefresh();
+      }
+    } catch (e) {
+      toast.error(e.response?.data?.detail || "Erro ao gerar imagem com IA.");
+    } finally {
+      setGeneratingImgId(null);
     }
   };
 
@@ -146,9 +169,9 @@ export const ContentPoolSection = ({ poolData = {}, products = [], campaigns = [
       ) : (
         <div className="grid md:grid-cols-2 xl:grid-cols-3 gap-4">
           {filteredItems.map((item) => (
-            <div key={item.id} className="rounded-2xl border border-white/10 bg-[#0B0F17] p-4 flex flex-col justify-between hover:border-emerald-500/30 transition-all shadow-md">
-              <div>
-                <div className="flex items-center justify-between gap-2 mb-2">
+            <div key={item.id} className="rounded-2xl border border-white/10 bg-[#0B0F17] p-4 flex flex-col justify-between hover:border-emerald-500/30 transition-all shadow-md space-y-3">
+              <div className="space-y-3">
+                <div className="flex items-center justify-between gap-2">
                   <span className={`px-2 py-0.5 rounded-full text-[10px] font-bold uppercase tracking-wider ${
                     item.status === "READY"
                       ? "bg-emerald-500/10 text-emerald-400 border border-emerald-500/20"
@@ -163,13 +186,51 @@ export const ContentPoolSection = ({ poolData = {}, products = [], campaigns = [
                   <span className="text-[11px] text-slate-400">{item.network} · {item.format}</span>
                 </div>
 
-                <h4 className="text-sm font-bold text-white line-clamp-1">{item.title}</h4>
-                {item.hook && (
-                  <p className="text-xs text-purple-300 mt-1 line-clamp-2"><strong>Hook:</strong> "{item.hook}"</p>
-                )}
-                <p className="text-xs text-slate-400 mt-2 line-clamp-3 whitespace-pre-line">{item.caption}</p>
+                {/* Preview da Imagem + Botão de Gerar/Regenerar */}
+                <div className="relative rounded-xl overflow-hidden bg-black/40 border border-white/10 h-36 flex items-center justify-center group">
+                  {generatingImgId === item.id ? (
+                    <div className="flex flex-col items-center justify-center p-3 text-center space-y-1.5">
+                      <RefreshCw className="w-6 h-6 animate-spin text-emerald-400" />
+                      <span className="text-[10px] font-bold text-emerald-300">A gerar imagem com IA...</span>
+                    </div>
+                  ) : item.image_url ? (
+                    <>
+                      <img src={item.image_url} alt="Thumbnail" className="w-full h-full object-cover" />
+                      <div className="absolute inset-0 bg-black/60 opacity-0 group-hover:opacity-100 transition-opacity flex items-center justify-center">
+                        <Button
+                          size="sm"
+                          onClick={() => handleGenerateImageForPoolItem(item)}
+                          disabled={generatingImgId === item.id}
+                          className="rounded-xl bg-emerald-600 hover:bg-emerald-500 text-white text-[10px] font-bold h-7 shadow"
+                        >
+                          <RefreshCw className="w-3 h-3 mr-1" /> Trocar Imagem
+                        </Button>
+                      </div>
+                    </>
+                  ) : (
+                    <div className="flex flex-col items-center justify-center p-3 text-center space-y-1.5">
+                      <p className="text-[10px] text-slate-400">Sem imagem vinculada</p>
+                      <Button
+                        size="sm"
+                        onClick={() => handleGenerateImageForPoolItem(item)}
+                        disabled={generatingImgId === item.id}
+                        className="rounded-xl bg-gradient-to-r from-emerald-600 to-teal-600 hover:from-emerald-500 hover:to-teal-500 text-white text-[10px] font-bold h-7 shadow"
+                      >
+                        <Plus className="w-3 h-3 mr-1" /> Gerar Imagem com IA
+                      </Button>
+                    </div>
+                  )}
+                </div>
 
-                <div className="flex items-center gap-2 mt-3 text-[10px] text-slate-400 flex-wrap">
+                <div>
+                  <h4 className="text-sm font-bold text-white line-clamp-1">{item.title}</h4>
+                  {item.hook && (
+                    <p className="text-xs text-purple-300 mt-1 line-clamp-2"><strong>Hook:</strong> "{item.hook}"</p>
+                  )}
+                  <p className="text-xs text-slate-400 mt-1.5 line-clamp-2 whitespace-pre-line">{item.caption}</p>
+                </div>
+
+                <div className="flex items-center gap-2 text-[10px] text-slate-400 flex-wrap">
                   {item.product_name && <span className="bg-white/5 px-2 py-0.5 rounded">📦 {item.product_name}</span>}
                   {item.campaign_name && <span className="bg-white/5 px-2 py-0.5 rounded">🎯 {item.campaign_name}</span>}
                 </div>

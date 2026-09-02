@@ -21,7 +21,8 @@ import {
   ChevronRight,
   X,
   SlidersHorizontal,
-  Send
+  Send,
+  RefreshCw
 } from "lucide-react";
 import { toast } from "sonner";
 
@@ -48,6 +49,7 @@ export const MarketingCreatorSection = ({
   const [showBatchModal, setShowBatchModal] = useState(false);
   const [batchApproving, setBatchApproving] = useState(false);
   const [activeSlideIndices, setActiveSlideIndices] = useState({});
+  const [generatingImageIdx, setGeneratingImageIdx] = useState(null);
 
   const handleGenerate = async () => {
     setGenerating(true);
@@ -144,6 +146,35 @@ export const MarketingCreatorSection = ({
       ...prev,
       [postIdx]: slideIdx
     }));
+  };
+
+  const handleGenerateIndividualImage = async (idx) => {
+    const post = batchPosts[idx];
+    if (!post) return;
+    setGeneratingImageIdx(idx);
+    try {
+      const selectedProd = products.find((p) => p.id === productId);
+      const res = await api.post("/marketing/studio/generate-image", {
+        hook: post.hook || "",
+        title: post.title || "",
+        caption: post.caption || "",
+        visual_briefing: post.visual_briefing || "",
+        product_name: selectedProd?.name || "",
+      });
+      if (res.data?.image_url) {
+        const newUrl = res.data.image_url;
+        updateBatchPostField(idx, "image_url", newUrl);
+        const currentVariants = post.image_variants || [];
+        if (!currentVariants.includes(newUrl)) {
+          updateBatchPostField(idx, "image_variants", [newUrl, ...currentVariants]);
+        }
+        toast.success(`Imagem gerada com sucesso para o Criativo #${idx + 1}!`);
+      }
+    } catch (e) {
+      toast.error(e.response?.data?.detail || "Erro ao gerar imagem com IA.");
+    } finally {
+      setGeneratingImageIdx(null);
+    }
   };
 
   // Batch Approve & Send to Content Pool
@@ -500,14 +531,64 @@ export const MarketingCreatorSection = ({
                         {/* Image / Carousel Preview */}
                         <div className="grid grid-cols-1 sm:grid-cols-12 gap-3 items-start">
                           {/* Image Box */}
-                          <div className="sm:col-span-5 relative rounded-xl overflow-hidden bg-black/40 border border-white/10 aspect-square flex items-center justify-center">
-                            {post.image_url ? (
-                              <img src={post.image_url} alt="Cover" className="w-full h-full object-cover" />
-                            ) : (
-                              <div className="text-center p-3">
-                                <ImageIcon className="w-6 h-6 text-slate-600 mx-auto mb-1" />
-                                <p className="text-[10px] text-slate-400">Imagem da peça</p>
-                              </div>
+                          <div className="sm:col-span-5 flex flex-col gap-2">
+                            <div className="relative rounded-2xl overflow-hidden bg-gradient-to-br from-black/60 to-black/30 border border-white/10 aspect-square flex flex-col items-center justify-center p-2 group shadow-inner">
+                              {generatingImageIdx === idx ? (
+                                <div className="flex flex-col items-center justify-center p-4 text-center space-y-2">
+                                  <Loader2 className="w-8 h-8 animate-spin text-emerald-400" />
+                                  <span className="text-[11px] font-bold text-emerald-300">A criar imagem com IA...</span>
+                                  <span className="text-[9px] text-slate-400">Fidelidade total ao hook</span>
+                                </div>
+                              ) : post.image_url ? (
+                                <div className="relative w-full h-full rounded-xl overflow-hidden group">
+                                  <img src={post.image_url} alt="Cover" className="w-full h-full object-cover transition-transform duration-300 group-hover:scale-105" />
+                                  <div className="absolute inset-0 bg-black/60 opacity-0 group-hover:opacity-100 transition-opacity flex flex-col items-center justify-center p-2 gap-2">
+                                    <Button
+                                      size="sm"
+                                      onClick={() => handleGenerateIndividualImage(idx)}
+                                      disabled={generatingImageIdx === idx}
+                                      className="rounded-xl bg-emerald-600 hover:bg-emerald-500 text-white text-[11px] font-bold h-8 shadow-lg"
+                                    >
+                                      <RefreshCw className="w-3.5 h-3.5 mr-1.5" /> Nova Imagem
+                                    </Button>
+                                  </div>
+                                </div>
+                              ) : (
+                                <div className="flex flex-col items-center justify-center p-3 text-center space-y-2">
+                                  <div className="p-2.5 rounded-xl bg-white/5 border border-white/10 text-slate-400">
+                                    <ImageIcon className="w-6 h-6 text-slate-500" />
+                                  </div>
+                                  <p className="text-[10px] text-slate-400 font-medium">Sem imagem</p>
+                                  <Button
+                                    size="sm"
+                                    onClick={() => handleGenerateIndividualImage(idx)}
+                                    disabled={generatingImageIdx === idx}
+                                    className="rounded-xl bg-gradient-to-r from-emerald-600 to-teal-600 hover:from-emerald-500 hover:to-teal-500 text-white text-[11px] font-bold h-8 shadow-md"
+                                  >
+                                    <Sparkles className="w-3.5 h-3.5 mr-1.5" /> Gerar Imagem
+                                  </Button>
+                                </div>
+                              )}
+                            </div>
+
+                            {post.image_url && (
+                              <Button
+                                size="sm"
+                                variant="outline"
+                                onClick={() => handleGenerateIndividualImage(idx)}
+                                disabled={generatingImageIdx === idx}
+                                className="w-full rounded-xl border-white/10 hover:border-emerald-500/40 text-slate-300 hover:text-white text-[11px] font-semibold h-7"
+                              >
+                                {generatingImageIdx === idx ? (
+                                  <>
+                                    <Loader2 className="w-3 h-3 animate-spin mr-1" /> A Gerar...
+                                  </>
+                                ) : (
+                                  <>
+                                    <RefreshCw className="w-3 h-3 mr-1 text-emerald-400" /> Trocar / Gerar Nova
+                                  </>
+                                )}
+                              </Button>
                             )}
                           </div>
 
