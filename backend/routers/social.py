@@ -232,6 +232,10 @@ async def _ensure_meta_runtime_config():
             pass
 
 
+def _meta_config_id() -> str:
+    return _RUNTIME_META_CONFIG.get("config_id") or _first_env("META_CONFIG_ID", "META CONFIG ID") or ""
+
+
 def _cfg():
     aid = _RUNTIME_META_CONFIG.get("app_id") or _first_env("META_APP_ID", "META APP ID")
     sec = _RUNTIME_META_CONFIG.get("app_secret") or _first_env("META_APP_SECRET", "META APP SECRET")
