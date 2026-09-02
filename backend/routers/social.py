@@ -1392,6 +1392,28 @@ async def connect_developer(inp: ConnectDeveloperIn, user: dict = Depends(premiu
 
     headers = {"User-Agent": "CEO-AI/2.0"}
     async with httpx.AsyncClient(timeout=30, headers=headers) as client:
+        aid, sec = _cfg()
+        # Se temos App ID e Secret, tentar converter para Long-Lived Token (60 dias)
+        # para que o me/accounts retorne o Token Permanente de Página (Never Expires)
+        if aid and sec and token:
+            try:
+                ex_res = await client.get(
+                    f"https://graph.facebook.com/{_graph_ver()}/oauth/access_token",
+                    params={
+                        "grant_type": "fb_exchange_token",
+                        "client_id": aid,
+                        "client_secret": sec,
+                        "fb_exchange_token": token,
+                    }
+                )
+                if ex_res.status_code == 200:
+                    long_lived_token = ex_res.json().get("access_token")
+                    if long_lived_token:
+                        token = long_lived_token
+                        logger.info("Token convertido com sucesso para Long-Lived Token!")
+            except Exception as e:
+                logger.warning(f"Tentativa de troca por long-lived token: {e}")
+
         page_info = None
         
         # 1. Tentar ler me?fields=id,name,instagram_business_account,tasks (se for Page Token)
