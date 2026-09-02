@@ -16,6 +16,7 @@ from core import (
     logger,
     prepare_logo,
     premium_user,
+    UPLOAD_DIR,
 )
 from routers.marketing import apply_post_status, record_marketing_metrics
 
