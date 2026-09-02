@@ -1522,15 +1522,21 @@ class ScheduleIn(PublishIn):
 
 
 async def _await_ig_container(container_id: str, token: str):
-    for _ in range(5):
-        status = await _graph_req("GET", _graph(container_id), {"fields": "status_code,status"}, token)
-        code = (status.get("status_code") or "").upper()
-        if code in {"FINISHED", "PUBLISHED"}:
-            return status
-        if code in {"ERROR", "EXPIRED"}:
-            raise HTTPException(502, f"A Meta devolveu o estado '{code}' ao preparar o media do Instagram.")
-        await asyncio.sleep(1.5)
-    raise HTTPException(502, "A Meta ainda estava a processar o media do Instagram. Tente novamente dentro de alguns segundos.")
+    for attempt in range(15):
+        try:
+            status = await _graph_req("GET", _graph(container_id), {"fields": "status_code,status"}, token)
+            code = (status.get("status_code") or "").upper()
+            if code in {"FINISHED", "PUBLISHED"}:
+                return status
+            if code in {"ERROR", "EXPIRED"}:
+                err_detail = status.get("status") or code
+                raise HTTPException(502, f"A Meta devolveu erro ao processar o media do Instagram ({code}): {err_detail}")
+        except HTTPException:
+            raise
+        except Exception as e:
+            logger.warning(f"Tentativa {attempt+1} _await_ig_container: {e}")
+        await asyncio.sleep(2.0)
+    raise HTTPException(502, "A Meta ainda está a processar o media do Instagram. Tente novamente dentro de alguns instantes.")
 
 
 async def _publish_core(uid: str, cid: Optional[str], payload: dict) -> dict:
@@ -1541,52 +1547,79 @@ async def _publish_core(uid: str, cid: Optional[str], payload: dict) -> dict:
         raise HTTPException(400, "As redes ainda não estão ligadas.")
     caption = payload.get("caption") or ""
     image_url = payload.get("image_url")
-    if image_url and str(image_url).startswith("/"):
-        base_url = _base()
-        image_url = f"{base_url}{image_url}"
-        
     want_img = payload.get("generate_image", True)
     do_ig = payload.get("instagram", True)
     do_fb = payload.get("facebook", True)
     if not (do_ig or do_fb):
         raise HTTPException(400, "Escolha pelo menos um canal de publicação.")
     if not _has_publish_task((conn or {}).get("tasks") or []):
-        raise HTTPException(400, "A Página Meta ligada não tem as tasks necessárias para publicar (CREATE_CONTENT/MANAGE).")
+        raise HTTPException(400, "A Página Meta ligada não tem as permissões necessárias para publicar (CREATE_CONTENT/MANAGE).")
     post_id = payload.get("post_id")
     post_meta = payload.get("post_meta") or await _marketing_post_meta(uid, cid, post_id)
-    if image_url and "/uploads/" in str(image_url):
-        fname = str(image_url).split("/uploads/")[-1]
-        fpath = UPLOAD_DIR / fname
-        if not fpath.exists():
-            doc = await db.uploaded_files.find_one({"filename": fname})
-            if doc and doc.get("data"):
-                raw = base64.b64decode(doc["data"])
+
+    # Obter os bytes reais da imagem para servir à Meta via CDN público direto
+    img_bytes = None
+    if image_url:
+        img_str = str(image_url)
+        if "/uploads/" in img_str:
+            fname = img_str.split("/uploads/")[-1].split("?")[0]
+            fpath = UPLOAD_DIR / fname
+            if fpath.exists():
                 try:
-                    fpath.write_bytes(raw)
+                    img_bytes = fpath.read_bytes()
                 except Exception:
                     pass
-            else:
-                # Regenerar imagem contextual com IA de alta fidelidade
-                prompt = payload.get("image_prompt") or caption[:220] or "Executivo profissional marketing digital inteligência artificial"
-                img = await generate_marketing_image(prompt)
-                logo = await db.brand_assets.find_one({"user_id": uid, "company_id": cid})
-                if logo and logo.get("logo_data"):
+            if not img_bytes:
+                doc = await db.uploaded_files.find_one({"filename": fname})
+                if doc and doc.get("data"):
                     try:
-                        img = composite_logo(img, base64.b64decode(logo["logo_data"]))
-                    except Exception as e:
-                        logger.error(f"logo composite falhou: {e}")
-                image_url = await _store_public_image(uid, cid, img)
+                        img_bytes = base64.b64decode(doc["data"])
+                        try:
+                            fpath.write_bytes(img_bytes)
+                        except Exception:
+                            pass
+                    except Exception:
+                        pass
+            if not img_bytes:
+                doc_sm = await db.social_media.find_one({"_id": fname})
+                if doc_sm and doc_sm.get("data"):
+                    try:
+                        img_bytes = base64.b64decode(doc_sm["data"])
+                    except Exception:
+                        pass
+        elif img_str.startswith("http") and "/api/public/media/" not in img_str:
+            try:
+                async with httpx.AsyncClient(timeout=8.0) as client:
+                    r = await client.get(img_str)
+                    if r.status_code == 200 and len(r.content) > 500:
+                        img_bytes = r.content
+            except Exception as e:
+                logger.warning(f"Erro ao descarregar imagem remota: {e}")
 
-    if not image_url and want_img and (do_ig or do_fb):
-        prompt = payload.get("image_prompt") or caption[:220] or "Conteúdo de marketing profissional"
-        img = await generate_marketing_image(prompt)
+    # Se não temos imagem mas o canal exige imagem (Instagram), gerar de forma segura
+    if not img_bytes and (do_ig or want_img):
+        try:
+            prompt = payload.get("image_prompt") or caption[:220] or "Professional business commercial marketing"
+            img_bytes = await asyncio.wait_for(generate_marketing_image(prompt), timeout=10.0)
+        except Exception as e:
+            logger.warning(f"Fallback de imagem rápida para publicação: {e}")
+            from PIL import Image, ImageDraw
+            buf = io.BytesIO()
+            bg_img = Image.new("RGB", (1080, 1080), (15, 23, 42))
+            draw = ImageDraw.Draw(bg_img)
+            draw.rectangle([60, 60, 1020, 1020], outline=(59, 130, 246), width=6)
+            bg_img.save(buf, format="PNG")
+            img_bytes = buf.getvalue()
+
+    if img_bytes:
         logo = await db.brand_assets.find_one({"user_id": uid, "company_id": cid})
         if logo and logo.get("logo_data"):
             try:
-                img = composite_logo(img, base64.b64decode(logo["logo_data"]))
+                img_bytes = composite_logo(img_bytes, base64.b64decode(logo["logo_data"]))
             except Exception as e:
                 logger.error(f"logo composite falhou: {e}")
-        image_url = await _store_public_image(uid, cid, img)
+        image_url = await _store_public_image(uid, cid, img_bytes)
+
     results = {}
     if do_ig:
         ig = conn.get("ig_user_id")
@@ -1596,17 +1629,28 @@ async def _publish_core(uid: str, cid: Optional[str], payload: dict) -> dict:
             results["instagram"] = {"error": "O Instagram exige uma imagem."}
         else:
             token = conn.get("user_token") or conn["page_token"]
-            cont = await _graph_req("POST", _graph(f"{ig}/media"), {"image_url": image_url, "caption": caption}, token)
-            await _await_ig_container(cont["id"], token)
-            pub = await _graph_req("POST", _graph(f"{ig}/media_publish"), {"creation_id": cont["id"]}, token)
-            results["instagram"] = {"ok": True, "id": pub.get("id")}
+            try:
+                cont = await _graph_req("POST", _graph(f"{ig}/media"), {"image_url": image_url, "caption": caption}, token)
+                await _await_ig_container(cont["id"], token)
+                pub = await _graph_req("POST", _graph(f"{ig}/media_publish"), {"creation_id": cont["id"]}, token)
+                results["instagram"] = {"ok": True, "id": pub.get("id")}
+            except Exception as e:
+                logger.error(f"Erro ao publicar no Instagram: {e}")
+                results["instagram"] = {"error": str(e)}
+
     if do_fb:
-        pid = conn["page_id"]; token = conn["page_token"]
-        if image_url:
-            fb = await _graph_req("POST", _graph(f"{pid}/photos"), {"url": image_url, "caption": caption}, token)
-        else:
-            fb = await _graph_req("POST", _graph(f"{pid}/feed"), {"message": caption}, token)
-        results["facebook"] = {"ok": True, "id": fb.get("id") or fb.get("post_id")}
+        pid = conn["page_id"]
+        token = conn["page_token"]
+        try:
+            if image_url:
+                fb = await _graph_req("POST", _graph(f"{pid}/photos"), {"url": image_url, "caption": caption}, token)
+            else:
+                fb = await _graph_req("POST", _graph(f"{pid}/feed"), {"message": caption}, token)
+            results["facebook"] = {"ok": True, "id": fb.get("id") or fb.get("post_id")}
+        except Exception as e:
+            logger.error(f"Erro ao publicar no Facebook: {e}")
+            results["facebook"] = {"error": str(e)}
+
     now_iso = datetime.now(timezone.utc).isoformat()
     social_post_doc = {
         "_id": str(uuid.uuid4()),
