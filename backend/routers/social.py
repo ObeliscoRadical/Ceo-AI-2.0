@@ -217,8 +217,19 @@ def _graph_ver() -> str:
 
 _RUNTIME_META_CONFIG = {}
 
-def _meta_config_id() -> str:
-    return _RUNTIME_META_CONFIG.get("config_id") or _first_env("META_CONFIG_ID", "META CONFIG ID")
+async def _ensure_meta_runtime_config():
+    if not _RUNTIME_META_CONFIG.get("app_id"):
+        try:
+            doc = await db.meta_app_config.find_one({"type": "global"})
+            if doc:
+                if doc.get("app_id"):
+                    _RUNTIME_META_CONFIG["app_id"] = doc["app_id"]
+                if doc.get("app_secret"):
+                    _RUNTIME_META_CONFIG["app_secret"] = doc["app_secret"]
+                if doc.get("config_id"):
+                    _RUNTIME_META_CONFIG["config_id"] = doc["config_id"]
+        except Exception:
+            pass
 
 
 def _cfg():
@@ -1170,6 +1181,7 @@ async def public_media(mid: str):
 # ---------------------------------------------------------------- estado / ligação
 @router.get("/social/status")
 async def social_status(user: dict = Depends(premium_user)):
+    await _ensure_meta_runtime_config()
     aid, sec = _cfg()
     cid = await active_company_id(user["id"])
     conn = await _find_connection(user["id"], cid)
@@ -1179,6 +1191,7 @@ async def social_status(user: dict = Depends(premium_user)):
 
 @router.get("/social/requirements")
 async def social_requirements(user: dict = Depends(premium_user)):
+    await _ensure_meta_runtime_config()
     aid, sec = _cfg()
     cid = await active_company_id(user["id"])
     conn = await _find_connection(user["id"], cid)
@@ -1194,6 +1207,7 @@ async def social_requirements(user: dict = Depends(premium_user)):
 
 @router.post("/social/diagnostics")
 async def social_diagnostics(user: dict = Depends(premium_user)):
+    await _ensure_meta_runtime_config()
     aid, sec = _cfg()
     cid = await active_company_id(user["id"])
     conn = await _find_connection(user["id"], cid)
@@ -1204,6 +1218,7 @@ async def social_diagnostics(user: dict = Depends(premium_user)):
 
 @router.get("/social/connect")
 async def social_connect(user: dict = Depends(premium_user)):
+    await _ensure_meta_runtime_config()
     aid, sec = _cfg()
     if not (aid and sec):
         raise HTTPException(400, "Integração Meta ainda não configurada (falta App ID/App Secret).")

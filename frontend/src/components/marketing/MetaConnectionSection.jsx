@@ -41,7 +41,7 @@ export const MetaConnectionSection = ({ api, onRefreshAll }) => {
   const [diagnosticsBusy, setDiagnosticsBusy] = useState(false);
   const [disconnecting, setDisconnecting] = useState(false);
   const [showReconfig, setShowReconfig] = useState(false);
-  const [activeMode, setActiveMode] = useState("token"); // "token" | "oauth" | "config"
+  const [activeMode, setActiveMode] = useState("oauth"); // "oauth" | "token" | "config"
 
   // Jobs & History state
   const [jobs, setJobs] = useState([]);
@@ -311,24 +311,24 @@ export const MetaConnectionSection = ({ api, onRefreshAll }) => {
           <div className="flex items-center justify-between border-b border-white/10 pb-4 flex-wrap gap-3">
             <div className="flex items-center gap-2">
               <KeyRound className="w-5 h-5 text-amber-400" />
-              <h4 className="font-bold text-white">Configurar Ligação com Meta</h4>
+              <h4 className="font-bold text-white">Conexão Oficial com Meta (Facebook & Instagram)</h4>
             </div>
             <div className="flex items-center gap-1 bg-black/40 p-1 rounded-xl border border-white/10">
-              <button
-                onClick={() => setActiveMode("token")}
-                className={`px-3 py-1.5 rounded-lg text-xs font-bold transition-all ${
-                  activeMode === "token" ? "bg-pink-600 text-white shadow-md" : "text-slate-400 hover:text-white"
-                }`}
-              >
-                ⚡ Token do Developer (Direto)
-              </button>
               <button
                 onClick={() => setActiveMode("oauth")}
                 className={`px-3 py-1.5 rounded-lg text-xs font-bold transition-all ${
                   activeMode === "oauth" ? "bg-blue-600 text-white shadow-md" : "text-slate-400 hover:text-white"
                 }`}
               >
-                🔗 Facebook Login (OAuth)
+                🔗 Facebook Login (Recomendado)
+              </button>
+              <button
+                onClick={() => setActiveMode("token")}
+                className={`px-3 py-1.5 rounded-lg text-xs font-bold transition-all ${
+                  activeMode === "token" ? "bg-pink-600 text-white shadow-md" : "text-slate-400 hover:text-white"
+                }`}
+              >
+                ⚡ Token Direto
               </button>
               <button
                 onClick={() => setActiveMode("config")}
@@ -340,6 +340,62 @@ export const MetaConnectionSection = ({ api, onRefreshAll }) => {
               </button>
             </div>
           </div>
+
+          {activeMode === "oauth" && (
+            <div className="space-y-4">
+              <div className="p-4 rounded-xl border border-blue-500/20 bg-blue-500/5 space-y-2">
+                <span className="text-xs font-bold text-blue-300 flex items-center gap-1.5">
+                  <Facebook className="w-4 h-4" /> Fluxo Oficial de Login com o Facebook
+                </span>
+                <p className="text-xs text-slate-300">
+                  Clique no botão abaixo para abrir a janela da Meta. Inicie sessão com a sua conta e autorize a Página <strong>ObeliscoLabs</strong> e o Instagram. O sistema faz a ligação automática de tudo sem precisar de colar tokens manuais.
+                </p>
+              </div>
+
+              {!data.configured && (
+                <div className="p-4 rounded-xl border border-white/10 bg-black/30 space-y-3">
+                  <p className="text-xs text-amber-300 font-semibold">
+                    Para iniciar o Facebook Login, confirme o seu Meta App ID e App Secret:
+                  </p>
+                  <div className="grid sm:grid-cols-2 gap-3">
+                    <div>
+                      <label className="text-[10px] uppercase font-bold text-slate-400">Meta App ID</label>
+                      <Input
+                        placeholder="Ex: 849204829102938"
+                        value={appId}
+                        onChange={(e) => setAppId(e.target.value)}
+                        className="bg-white/[0.03] border-white/10 text-white text-xs mt-1"
+                      />
+                    </div>
+                    <div>
+                      <label className="text-[10px] uppercase font-bold text-slate-400">Meta App Secret</label>
+                      <Input
+                        type="password"
+                        placeholder="Ex: d41d8cd98f00b204e9800998ecf8427e"
+                        value={appSecret}
+                        onChange={(e) => setAppSecret(e.target.value)}
+                        className="bg-white/[0.03] border-white/10 text-white text-xs font-mono mt-1"
+                      />
+                    </div>
+                  </div>
+                </div>
+              )}
+
+              <Button
+                onClick={async () => {
+                  if (!data.configured && (appId.trim() && appSecret.trim())) {
+                    await handleSaveAppConfig();
+                  }
+                  handleConnectOAuth();
+                }}
+                disabled={!data.configured && (!appId.trim() || !appSecret.trim())}
+                className="w-full rounded-xl bg-gradient-to-r from-blue-600 to-indigo-600 hover:from-blue-500 hover:to-indigo-500 text-white font-bold py-4 text-sm shadow-xl flex items-center justify-center gap-2"
+              >
+                <Facebook className="w-5 h-5 fill-current" />
+                <span>Entrar com Facebook & Autorizar Automação</span>
+              </Button>
+            </div>
+          )}
 
           {activeMode === "token" && (
             <div className="space-y-4">
@@ -382,28 +438,6 @@ export const MetaConnectionSection = ({ api, onRefreshAll }) => {
               >
                 {connectingDev ? <Loader2 className="w-4 h-4 animate-spin mr-2" /> : <Zap className="w-4 h-4 mr-2 text-amber-300" />}
                 Validar Token & Conectar Redes Sociais
-              </Button>
-            </div>
-          )}
-
-          {activeMode === "oauth" && (
-            <div className="space-y-4">
-              <div className="p-4 rounded-xl border border-blue-500/20 bg-blue-500/5 space-y-2">
-                <span className="text-xs font-bold text-blue-300 flex items-center gap-1.5">
-                  <Facebook className="w-4 h-4" /> Fluxo de Autorização Facebook Login
-                </span>
-                <p className="text-xs text-slate-300">
-                  Inicie sessão na sua conta Meta para conceder acesso às Páginas de Facebook e Contas de Instagram geridas.
-                </p>
-              </div>
-
-              <Button
-                onClick={handleConnectOAuth}
-                disabled={!data.configured}
-                className="w-full rounded-xl bg-blue-600 hover:bg-blue-500 text-white font-bold py-3 shadow-lg disabled:opacity-50"
-              >
-                <Facebook className="w-4 h-4 mr-2" />
-                {data.configured ? "Entrar com Facebook / Meta" : "Requer App ID e Secret (Configure na aba ao lado)"}
               </Button>
             </div>
           )}
