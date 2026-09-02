@@ -1100,7 +1100,7 @@ async def _social_media_agent_payload(uid: str, cid: Optional[str]):
         "blockers": blockers,
         "recent_queue": [
             {
-                "id": row.get("_id"),
+                "id": str(row.get("_id")),
                 "post_id": (row.get("payload") or {}).get("post_id"),
                 "run_at": row.get("run_at"),
                 "autonomous": (row.get("payload") or {}).get("autonomous_agent") == "social_media",
@@ -1662,7 +1662,7 @@ async def social_jobs(user: dict = Depends(premium_user)):
     cid = await active_company_id(user["id"])
     await _migrate_legacy_jobs(user["id"], cid)
     jobs = await db.social_jobs.find({"user_id": user["id"], "company_id": cid}).sort("run_at", 1).to_list(100)
-    out = [{"id": j["_id"], "run_at": j.get("run_at"), "status": j.get("status"),
+    out = [{"id": str(j["_id"]), "run_at": j.get("run_at"), "status": j.get("status"),
             "caption": ((j.get("payload") or {}).get("caption") or "")[:80],
             "post_id": (j.get("payload") or {}).get("post_id"),
             "error": j.get("error")} for j in jobs]
