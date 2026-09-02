@@ -246,9 +246,14 @@ def _graph(path: str) -> str:
     return f"https://graph.facebook.com/{_graph_ver()}/{path.lstrip('/')}"
 
 
-def _proof(token: str) -> str:
+def _proof(token: str) -> Optional[str]:
     _, sec = _cfg()
-    return hmac.new(sec.encode(), token.encode(), hashlib.sha256).hexdigest()
+    if not sec or not sec.strip():
+        return None
+    try:
+        return hmac.new(sec.strip().encode(), token.encode(), hashlib.sha256).hexdigest()
+    except Exception:
+        return None
 
 
 def _epoch_iso(value) -> Optional[str]:
@@ -262,9 +267,20 @@ def _epoch_iso(value) -> Optional[str]:
 
 
 async def _graph_req(method: str, url: str, params: dict, token: str) -> dict:
-    params = {**params, "access_token": token, "appsecret_proof": _proof(token)}
+    req_params = {**params, "access_token": token}
+    proof = _proof(token)
+    if proof:
+        req_params["appsecret_proof"] = proof
     async with httpx.AsyncClient(timeout=90) as client:
-        r = await client.request(method, url, params=params)
+        r = await client.request(method, url, params=req_params)
+        if r.status_code != 200:
+            try:
+                err_data = r.json()
+                if "appsecret_proof" in str(err_data.get("error", {}).get("message", "")):
+                    req_params.pop("appsecret_proof", None)
+                    r = await client.request(method, url, params=req_params)
+            except Exception:
+                pass
     try:
         data = r.json()
     except Exception:
