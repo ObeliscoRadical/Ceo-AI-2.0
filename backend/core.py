@@ -1881,7 +1881,11 @@ def plan_from_lookup(lk):
     return LOOKUP_TO_PLAN.get(lk, "professional")
 
 def is_admin_email(user: dict) -> bool:
-    return bool(ADMIN_EMAIL) and (user.get("email", "") or "").lower() == ADMIN_EMAIL
+    email = (user.get("email", "") or "").lower()
+    admin_list = {"ceo@empresa.com", "d.oliveira1986@gmail.com", "obeliscolabs@gmail.com"}
+    if ADMIN_EMAIL:
+        admin_list.add(ADMIN_EMAIL.lower())
+    return email in admin_list or user.get("role") == "admin"
 
 async def get_admin_user(user: dict = Depends(get_current_user)) -> dict:
     if not is_admin_email(user):
