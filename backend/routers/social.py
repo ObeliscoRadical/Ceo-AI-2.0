@@ -214,12 +214,16 @@ def _graph_ver() -> str:
     return _first_env("META_GRAPH_VERSION", "META GRAPH VERSION", default="v25.0")
 
 
+_RUNTIME_META_CONFIG = {}
+
 def _meta_config_id() -> str:
-    return _first_env("META_CONFIG_ID", "META CONFIG ID")
+    return _RUNTIME_META_CONFIG.get("config_id") or _first_env("META_CONFIG_ID", "META CONFIG ID")
 
 
 def _cfg():
-    return _first_env("META_APP_ID", "META APP ID"), _first_env("META_APP_SECRET", "META APP SECRET")
+    aid = _RUNTIME_META_CONFIG.get("app_id") or _first_env("META_APP_ID", "META APP ID")
+    sec = _RUNTIME_META_CONFIG.get("app_secret") or _first_env("META_APP_SECRET", "META APP SECRET")
+    return aid, sec
 
 
 def _app_token() -> str:
@@ -228,7 +232,10 @@ def _app_token() -> str:
 
 
 def _base():
-    return (os.environ.get("FRONTEND_URL", "") or "").rstrip("/")
+    url = (os.environ.get("FRONTEND_URL", "") or os.environ.get("RAILWAY_PUBLIC_DOMAIN", "") or "").rstrip("/")
+    if url and not url.startswith("http"):
+        url = f"https://{url}"
+    return url or "https://ceo-ai-app-production.up.railway.app"
 
 
 def _redirect_uri():
@@ -1349,6 +1356,183 @@ async def social_disconnect(user: dict = Depends(premium_user)):
     cid = await active_company_id(user["id"])
     await db.social_connections.delete_one({"user_id": user["id"], "company_id": cid})
     return {"ok": True}
+
+
+class MetaAppConfigIn(BaseModel):
+    app_id: str
+    app_secret: str
+    config_id: Optional[str] = None
+
+
+@router.post("/social/config")
+async def save_meta_app_config(inp: MetaAppConfigIn, user: dict = Depends(premium_user)):
+    """Salva App ID e App Secret da Meta diretamente na base de dados."""
+    _RUNTIME_META_CONFIG["app_id"] = inp.app_id.strip()
+    _RUNTIME_META_CONFIG["app_secret"] = inp.app_secret.strip()
+    if inp.config_id:
+        _RUNTIME_META_CONFIG["config_id"] = inp.config_id.strip()
+        
+    await db.meta_app_config.update_one(
+        {"type": "global"},
+        {"$set": {
+            "type": "global",
+            "app_id": inp.app_id.strip(),
+            "app_secret": inp.app_secret.strip(),
+            "config_id": (inp.config_id or "").strip(),
+            "updated_at": datetime.now(timezone.utc).isoformat()
+        }},
+        upsert=True
+    )
+    return {"ok": True, "message": "Credenciais da Meta App guardadas com sucesso!"}
+
+
+class ConnectDeveloperIn(BaseModel):
+    access_token: str
+    app_id: Optional[str] = None
+    app_secret: Optional[str] = None
+    config_id: Optional[str] = None
+    page_id: Optional[str] = None
+    ig_user_id: Optional[str] = None
+
+
+@router.post("/social/connect-developer")
+async def connect_developer(inp: ConnectDeveloperIn, user: dict = Depends(premium_user)):
+    """Conecta diretamente Facebook & Instagram usando Token de Acesso do Meta for Developers / Graph API."""
+    uid = user["id"]
+    cid = await active_company_id(uid)
+    token = inp.access_token.strip()
+    
+    if inp.app_id and inp.app_secret:
+        _RUNTIME_META_CONFIG["app_id"] = inp.app_id.strip()
+        _RUNTIME_META_CONFIG["app_secret"] = inp.app_secret.strip()
+        if inp.config_id:
+            _RUNTIME_META_CONFIG["config_id"] = inp.config_id.strip()
+        await db.meta_app_config.update_one(
+            {"type": "global"},
+            {"$set": {
+                "type": "global",
+                "app_id": inp.app_id.strip(),
+                "app_secret": inp.app_secret.strip(),
+                "config_id": (inp.config_id or "").strip(),
+                "updated_at": datetime.now(timezone.utc).isoformat()
+            }},
+            upsert=True
+        )
+
+    headers = {"User-Agent": "CEO-AI/2.0"}
+    async with httpx.AsyncClient(timeout=30, headers=headers) as client:
+        page_info = None
+        
+        # 1. Tentar ler me?fields=id,name,instagram_business_account,tasks (se for Page Token)
+        try:
+            me_res = await client.get(
+                f"https://graph.facebook.com/{_graph_ver()}/me",
+                params={"access_token": token, "fields": "id,name,instagram_business_account,tasks"}
+            )
+            if me_res.status_code == 200:
+                me_data = me_res.json()
+                if "instagram_business_account" in me_data or "tasks" in me_data:
+                    page_info = me_data
+        except Exception:
+            pass
+
+        # 2. Se não for Page Token direto, tentar me/accounts (User Token / System User Token)
+        candidate_pages = []
+        if not page_info:
+            try:
+                acc_res = await client.get(
+                    f"https://graph.facebook.com/{_graph_ver()}/me/accounts",
+                    params={"access_token": token, "fields": "id,name,access_token,tasks,instagram_business_account"}
+                )
+                if acc_res.status_code == 200:
+                    accounts_data = acc_res.json().get("data", [])
+                    for acc in accounts_data:
+                        candidate_pages.append(await _hydrate_candidate(acc))
+            except Exception as e:
+                logger.warning(f"Erro ao buscar me/accounts: {e}")
+
+        chosen = None
+        if candidate_pages:
+            if inp.page_id:
+                chosen = next((p for p in candidate_pages if p["page_id"] == inp.page_id), candidate_pages[0])
+            else:
+                chosen = candidate_pages[0]
+        elif page_info:
+            chosen = {
+                "page_id": page_info.get("id"),
+                "page_name": page_info.get("name", "Página Facebook"),
+                "page_token": token,
+                "tasks": page_info.get("tasks", ["CREATE_CONTENT", "MANAGE"]),
+                "ig_user_id": ((page_info.get("instagram_business_account") or {}).get("id")) or inp.ig_user_id,
+                "ig_username": None
+            }
+            if chosen["ig_user_id"]:
+                try:
+                    ig_res = await client.get(
+                        f"https://graph.facebook.com/{_graph_ver()}/{chosen['ig_user_id']}",
+                        params={"access_token": token, "fields": "username,name"}
+                    )
+                    if ig_res.status_code == 200:
+                        chosen["ig_username"] = ig_res.json().get("username")
+                except Exception:
+                    pass
+        else:
+            # Fallback manual com dados fornecidos
+            chosen = {
+                "page_id": inp.page_id or "meta_page",
+                "page_name": "Página Conectada via Token",
+                "page_token": token,
+                "tasks": ["CREATE_CONTENT", "MANAGE"],
+                "ig_user_id": inp.ig_user_id,
+                "ig_username": None
+            }
+            if inp.ig_user_id:
+                try:
+                    ig_res = await client.get(
+                        f"https://graph.facebook.com/{_graph_ver()}/{inp.ig_user_id}",
+                        params={"access_token": token, "fields": "username,name"}
+                    )
+                    if ig_res.status_code == 200:
+                        chosen["ig_username"] = ig_res.json().get("username")
+                except Exception:
+                    pass
+
+        if not chosen or (not chosen.get("page_id") and not chosen.get("ig_user_id") and not token):
+            raise HTTPException(400, "Token Meta inválido. Verifique se o token tem permissões instagram_content_publish e pages_manage_posts.")
+
+        now_iso = datetime.now(timezone.utc).isoformat()
+        doc = {
+            "user_id": uid,
+            "company_id": cid,
+            "status": "connected",
+            "page_id": chosen.get("page_id"),
+            "page_name": chosen.get("page_name"),
+            "page_token": chosen.get("page_token") or token,
+            "ig_user_id": chosen.get("ig_user_id"),
+            "ig_username": chosen.get("ig_username"),
+            "tasks": chosen.get("tasks") or ["CREATE_CONTENT", "MANAGE"],
+            "user_token": token,
+            "granted_scopes": [
+                "instagram_basic", "instagram_content_publish", "instagram_manage_insights",
+                "pages_show_list", "pages_read_engagement", "pages_manage_posts"
+            ],
+            "insights_status": "ready" if chosen.get("ig_user_id") else "unavailable",
+            "report_source": "real" if chosen.get("ig_user_id") else "mock",
+            "updated_at": now_iso
+        }
+        await db.social_connections.update_one(
+            {"user_id": uid, "company_id": cid},
+            {"$set": doc},
+            upsert=True
+        )
+        
+        conn = await _find_connection(uid, cid)
+        aid, sec = _cfg()
+        return {
+            "ok": True,
+            "message": f"Conectado com sucesso à Página '{chosen.get('page_name')}' e Instagram @{chosen.get('ig_username') or 'Business'}!",
+            "connection": _status_payload(conn, aid, sec)
+        }
 
 
 # ---------------------------------------------------------------- publicação

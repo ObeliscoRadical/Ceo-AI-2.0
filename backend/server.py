@@ -137,8 +137,16 @@ async def startup():
     try:
         init_storage()
         logger.info("Storage initialized")
+        # Carregar configurações Meta da DB se existirem
+        from routers.social import _RUNTIME_META_CONFIG
+        meta_cfg = await db.meta_app_config.find_one({"type": "global"})
+        if meta_cfg:
+            if meta_cfg.get("app_id"): _RUNTIME_META_CONFIG["app_id"] = meta_cfg["app_id"]
+            if meta_cfg.get("app_secret"): _RUNTIME_META_CONFIG["app_secret"] = meta_cfg["app_secret"]
+            if meta_cfg.get("config_id"): _RUNTIME_META_CONFIG["config_id"] = meta_cfg["config_id"]
+            logger.info("Meta runtime config loaded from database")
     except Exception as e:
-        logger.error(f"Storage init failed: {e}")
+        logger.error(f"Storage / Meta config init failed: {e}")
     try:
         scheduler = AsyncIOScheduler(timezone="UTC")
         scheduler.add_job(send_daily_briefings, CronTrigger(hour=7, minute=0), id="daily_briefings", replace_existing=True)

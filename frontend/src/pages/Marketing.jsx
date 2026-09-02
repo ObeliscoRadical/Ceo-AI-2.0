@@ -556,7 +556,7 @@ export default function Marketing() {
                 </div>
                 <h2 className="text-xl font-bold tracking-tight text-white">Ligação com Meta (Instagram & Facebook)</h2>
               </div>
-              <MetaConnectionSection />
+              <MetaConnectionSection api={api} onRefreshAll={() => loadAllData(true)} />
             </div>
           )}
         </motion.div>
