@@ -25,6 +25,7 @@ import {
   X
 } from "lucide-react";
 import { toast } from "sonner";
+import { TikTokConnectionSection } from "./TikTokConnectionSection";
 
 const STATE_META = {
   not_connected: { label: "Não ligada", tone: "text-slate-300 bg-slate-500/20 border-slate-400/20" },
@@ -478,6 +479,9 @@ export const MetaConnectionSection = ({ api, onRefreshAll }) => {
           )}
         </div>
       )}
+
+      {/* 2.5 TIKTOK CONTENT POSTING & LOGIN KIT */}
+      <TikTokConnectionSection api={api} onRefreshAll={onRefreshAll} />
 
       {/* 3. FILA DE POSTAGENS PROGRAMADAS ("TAL HORA VAI SAIR ESSE POST") */}
       <div className="p-6 rounded-2xl border border-white/10 bg-white/[0.02] space-y-4">

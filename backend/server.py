@@ -14,12 +14,12 @@ from apscheduler.triggers.cron import CronTrigger
 from datetime import datetime, timezone
 
 from core import db, client, hash_password, verify_password, init_storage, send_daily_briefings, send_monthly_value_alerts, send_goal_alerts, logger, UPLOAD_DIR
-from routers import auth, companies, finance, ceo, documents, billing, misc, voice, founders, goals, council, crm, marketing, marketing_autonomous, social, prospecting, notifications, grants, erp_integrations, site_publishing, growth_agent, obelisco_sync, marketing_pipeline
+from routers import auth, companies, finance, ceo, documents, billing, misc, voice, founders, goals, council, crm, marketing, marketing_autonomous, social, prospecting, notifications, grants, erp_integrations, site_publishing, growth_agent, obelisco_sync, marketing_pipeline, tiktok
 
 app = FastAPI()
 app.mount("/uploads", StaticFiles(directory=str(UPLOAD_DIR)), name="uploads")
 api_router = APIRouter(prefix="/api")
-for _m in (auth, companies, finance, ceo, documents, billing, misc, voice, founders, goals, council, crm, marketing, marketing_autonomous, social, prospecting, notifications, grants, erp_integrations, site_publishing, growth_agent, obelisco_sync, marketing_pipeline):
+for _m in (auth, companies, finance, ceo, documents, billing, misc, voice, founders, goals, council, crm, marketing, marketing_autonomous, social, prospecting, notifications, grants, erp_integrations, site_publishing, growth_agent, obelisco_sync, marketing_pipeline, tiktok):
     api_router.include_router(_m.router)
 app.include_router(api_router)
 
