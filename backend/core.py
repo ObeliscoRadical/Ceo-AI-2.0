@@ -169,25 +169,26 @@ def put_object(path: str, data: bytes, content_type: str) -> dict:
         f.write(data)
     return {"path": path, "url": f"/uploads/{path}"}
 
-async def generate_post_visual_scenes(titulo: str, legenda: str, tema: str = "", sector: str = "", company_name: str = "") -> list[str]:
-    """Usa o Gemini como Diretor Criativo Fotográfico para criar 3 cenas visuais altamente contextuais em inglês estritamente alinhadas com a LEGENDA e história do post."""
+async def generate_post_visual_scenes(titulo: str, legenda: str, hook: str = "", product_name: str = "", sector: str = "", company_name: str = "") -> list[str]:
+    """Usa o Gemini como Diretor Criativo Fotográfico para criar 3 cenas visuais em inglês ultra-contextualizadas com o GANCHO (HOOK), PRODUTO e HISTÓRIA real da peça."""
     system = (
-        "You are an award-winning Commercial Photography Creative Director. "
-        "Your task is to translate a social media post's title, caption (legenda), and theme into 3 distinct, "
-        "highly contextual, photorealistic image prompts for an AI image generator (Flux). "
-        "CRITICAL RULES:\n"
-        "1. The image MUST directly illustrate the specific narrative and situation described in the CAPTION (e.g. protecting home appliances against electrical surges, inspecting residential circuit boards, modern surge protection).\n"
-        "2. NO generic, random or irrelevant images.\n"
-        "3. Each prompt must be in English, single line (30-50 words), describing exact subject, setting, lighting, mood, photorealistic commercial photography style, 8k resolution.\n"
-        "4. Always append: 'no text, no words, no watermark, no logos'.\n"
+        "You are an award-winning Commercial Photography Creative Director for high-converting advertising. "
+        "Your job is to translate a social media post's HOOK, TITLE, PRODUCT, and CAPTION into 3 distinct, "
+        "ultra-concrete, photorealistic commercial photography scene prompts for the Flux AI image generator.\n\n"
+        "MANDATORY RULES:\n"
+        "1. NO ABSTRACT CONCEPTS, NO EMPTY CORRIDORS, NO FLOATING OBJECTS, NO GENERIC LAMPS/WALLS.\n"
+        "2. The image MUST depict real humans in action, authentic professional workplace/lifestyle situations that directly reflect the emotional tension of the HOOK and the value of the PRODUCT (e.g. focused business owner managing operations, skilled technician working on site, confident executive in modern office, customer experiencing the direct benefit).\n"
+        "3. Every prompt must be in descriptive English (35-50 words), detailing: Subject, Action, Facial Expression, Setting/Environment, Lighting (e.g. warm cinematic natural light), Camera Shot (e.g. medium commercial portrait, sharp focus on subject), 8k resolution, photorealistic.\n"
+        "4. Always append: 'award winning commercial photography, 8k, photorealistic, sharp focus, no text, no words, no letters, no logos, no watermark, no CGI, no cartoon'.\n"
         "5. Return ONLY a JSON list of 3 strings: [\"prompt1\", \"prompt2\", \"prompt3\"]."
     )
     user_prompt = (
-        f"Empresa: {company_name} (Setor: {sector})\n"
-        f"Título: {titulo}\n"
-        f"Tema: {tema}\n"
-        f"Legenda Completa: {legenda}\n\n"
-        "Generate 3 distinct realistic scene prompts strictly matching the narrative of the caption in JSON format:"
+        f"Empresa: {company_name or 'Empresa Líder'} (Setor: {sector or 'Serviços Especializados'})\n"
+        f"Produto/Serviço: {product_name or 'Solução Profissional'}\n"
+        f"Gancho (Hook de Abertura): {hook}\n"
+        f"Título da Peça: {titulo}\n"
+        f"Legenda / Copy: {legenda[:400]}\n\n"
+        "Generate 3 distinct realistic commercial photography scene prompts strictly grounded in the HOOK and PRODUCT context in JSON format:"
     )
     try:
         res = await ai_text(system, user_prompt)
@@ -200,27 +201,28 @@ async def generate_post_visual_scenes(titulo: str, legenda: str, tema: str = "",
     except Exception as e:
         logger.warning(f"generate_post_visual_scenes note: {e}")
     
-    clean_title = (titulo or 'electrical maintenance').replace('"', '')
+    # Concrete context fallback
+    subj = product_name or company_name or "commercial business"
+    hook_desc = hook or titulo or "business management operations"
     return [
-        f"Commercial photography illustrating {clean_title} in a high-end modern residential interior, warm natural lighting, 8k resolution, photorealistic, no text, no watermark",
-        f"Close-up detailed commercial shot of professional electrician testing home electrical systems for {clean_title}, sharp focus, 8k, photorealistic, no text, no watermark",
-        f"Cinematic lifestyle shot of modern home appliances safely operating with electrical surge protection, elegant interior, 8k, photorealistic, no text, no watermark"
+        f"Professional business owner actively working at a modern office desk with laptop and documents illustrating '{hook_desc}', warm cinematic sunlight, realistic human expression, sharp focus, award winning commercial photography, 8k, photorealistic, no text, no watermark",
+        f"Close up dynamic shot of a specialist in uniform with modern tools delivering {subj}, clean professional facility, crisp lighting, depth of field, 8k photorealistic commercial photography, no text, no watermark",
+        f"Confident executive reviewing strategic growth dashboard on tablet in a bright contemporary workplace, natural window lighting, 8k, editorial commercial photography, no text, no watermark"
     ]
 
 async def search_topic_exact_images(query: str, count: int = 3) -> list[bytes]:
-    """Procura imagens reais e profissionais no DuckDuckGo / Openverse estritamente correspondentes ao tema."""
+    """Procura imagens reais e profissionais no DuckDuckGo estritamente correspondentes ao tema."""
     results = []
     headers = {
         "User-Agent": "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/122.0.0.0 Safari/537.36",
     }
     try:
         async with httpx.AsyncClient(headers=headers, timeout=10.0, follow_redirects=True) as client:
-            # 1. DuckDuckGo Image Search
-            token_res = await client.get("https://duckduckgo.com/", params={"q": query})
+            token_res = await client.get("https://duckduckgo.com/", params={"q": f"{query} commercial photography"})
             vqd_match = re.search(r'vqd=([\d-]+)', token_res.text) or re.search(r'vqd="([^"]+)"', token_res.text)
             if vqd_match:
                 vqd = vqd_match.group(1)
-                search_res = await client.get("https://duckduckgo.com/i.js", params={"l": "us-en", "o": "json", "q": query, "vqd": vqd, "f": ",,,", "p": "1"})
+                search_res = await client.get("https://duckduckgo.com/i.js", params={"l": "us-en", "o": "json", "q": f"{query} professional", "vqd": vqd, "f": ",,,", "p": "1"})
                 if search_res.status_code == 200:
                     items = search_res.json().get("results", [])
                     for it in items:
@@ -239,15 +241,16 @@ async def search_topic_exact_images(query: str, count: int = 3) -> list[bytes]:
     return results
 
 async def generate_marketing_images(prompt: str = "", number_of_images: int = 3, scene_prompts: list[str] = None, topic_query: str = "") -> list[bytes]:
-    """Gera 1..N imagens de marketing estritamente fiéis ao tema e legenda do post."""
+    """Gera 1..N imagens de marketing estritamente fiéis ao gancho, produto e tema."""
     count = max(1, min(int(number_of_images or 3), 4))
     
     if not scene_prompts:
-        clean_p = prompt or "electrical maintenance safety inspection"
+        clean_p = prompt or "business owner in modern office managing operations"
+        # Garante enriquecimento fotográfico se prompt for simples
         scene_prompts = [
-            f"{clean_p}, wide angle commercial photography, natural light, 8k, photorealistic, no text, no watermark",
-            f"{clean_p}, close up detailed shot, sharp focus, professional lighting, 8k, photorealistic, no text, no watermark",
-            f"{clean_p}, cinematic modern editorial photography, crisp details, 8k, photorealistic, no text, no watermark"
+            f"{clean_p}, medium commercial photography shot, natural lighting, shallow depth of field, 8k, photorealistic, sharp focus, no text, no watermark, no CGI, no abstract",
+            f"{clean_p}, close up detailed shot, crisp lighting, cinematic depth, 8k, photorealistic, sharp focus, no text, no watermark, no CGI, no abstract",
+            f"{clean_p}, wide angle modern editorial photography, crisp details, 8k, photorealistic, no text, no watermark, no CGI, no abstract"
         ][:count]
     
     results = []
@@ -257,9 +260,9 @@ async def generate_marketing_images(prompt: str = "", number_of_images: int = 3,
         for idx, scene in enumerate(scene_prompts[:count]):
             img_bytes = None
             seed = int(time.time() * 1000) % 1000000 + (idx * 337)
-            enc_scene = urllib.parse.quote(scene[:350])
+            enc_scene = urllib.parse.quote(scene[:380])
 
-            # 1. Tentar Pollinations AI com modelo Flux (fotografia ultrarrealista de topo)
+            # 1. Tentar Pollinations AI com modelo Flux
             for model_name in ["flux", "turbo"]:
                 poll_url = f"https://image.pollinations.ai/prompt/{enc_scene}?width=1080&height=1080&seed={seed}&nologo=true&model={model_name}"
                 try:
@@ -275,13 +278,13 @@ async def generate_marketing_images(prompt: str = "", number_of_images: int = 3,
 
             if len(results) >= count:
                 break
-            await asyncio.sleep(0.6)
+            await asyncio.sleep(0.5)
 
-    # 2. Fallback de Imagens Reais Exatamente Alinhadas ao Título/Tema (NUNCA fotos aleatórias)
+    # 2. Fallback de Imagens Reais Exatamente Alinhadas ao Título/Tema
     if len(results) < count:
         needed = count - len(results)
-        search_q = topic_query or (scene_prompts[0] if scene_prompts else "electrical maintenance safety")
-        clean_q = re.sub(r'(photorealistic|8k|no text|no watermark|no logos|commercial photography|,)', ' ', search_q)
+        search_q = topic_query or (scene_prompts[0] if scene_prompts else "business management professional")
+        clean_q = re.sub(r'(photorealistic|8k|no text|no watermark|no logos|no cgi|no abstract|commercial photography|,)', ' ', search_q)
         topic_images = await search_topic_exact_images(clean_q.strip(), count=needed)
         for t_img in topic_images:
             results.append(t_img)

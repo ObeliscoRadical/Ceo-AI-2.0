@@ -80,7 +80,7 @@ async def configure_obelisco(inp: ObeliscoConfigInput, user: dict = Depends(get_
         
     await db.obelisco_credentials.update_one(
         {"user_id": user["id"]},
-        {"": doc, "": {"created_at": now}},
+        {"$set": doc, "$setOnInsert": {"created_at": now}},
         upsert=True
     )
     

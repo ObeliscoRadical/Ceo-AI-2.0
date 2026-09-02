@@ -252,7 +252,7 @@ async def update_product(product_id: str, inp: ProductIn, user: dict = Depends(p
     
     res = await db.marketing_products.update_one(
         {"_id": oid, "user_id": uid, "company_id": cid},
-        {"": doc}
+        {"$set": doc}
     )
     if res.matched_count == 0:
         raise HTTPException(status_code=404, detail="Produto não encontrado")
@@ -388,7 +388,7 @@ async def update_campaign(campaign_id: str, inp: CampaignIn, user: dict = Depend
     
     res = await db.marketing_campaigns.update_one(
         {"_id": oid, "user_id": uid, "company_id": cid},
-        {"": doc}
+        {"$set": doc}
     )
     if res.matched_count == 0:
         raise HTTPException(status_code=404, detail="Campanha não encontrada")
@@ -663,9 +663,21 @@ Retorne em formato JSON:
     image_variants = []
     if generate_image:
         try:
-            brief = result.get("visual_briefing") or f"{prod.get('name', 'Professional')} {company.get('sector', 'Business')} commercial photography 8k"
-            topic_q = result.get("title") or prod.get("name") or company.get("sector")
-            raw_imgs = await generate_marketing_images(brief, number_of_images=2, topic_query=topic_q)
+            scenes = await generate_post_visual_scenes(
+                titulo=result.get("title") or title_raw,
+                legenda=result.get("caption") or "",
+                hook=result.get("hook") or "",
+                product_name=prod.get("name") or "",
+                sector=company.get("sector") or "",
+                company_name=company.get("name") or ""
+            )
+            topic_q = f"{prod.get('name', '')} {result.get('hook', '')}".strip() or "business commercial"
+            raw_imgs = await generate_marketing_images(
+                prompt=scenes[0] if scenes else (result.get("visual_briefing") or ""),
+                number_of_images=2,
+                scene_prompts=scenes,
+                topic_query=topic_q
+            )
             for img_data in raw_imgs:
                 if isinstance(img_data, bytes) and len(img_data) > 500:
                     fname = f"studio_img_{uuid.uuid4().hex[:12]}.png"
@@ -874,9 +886,21 @@ Gere um post completo de alta qualidade e pronto a publicar em formato JSON:
     image_variants = []
     if payload.get("generate_image", True):
         try:
-            brief = result.get("visual_briefing") or f"{prod.get('name', 'Professional')} {company.get('sector', 'Business')} commercial photography, cinematic lighting, 8k"
-            topic_q = result.get("title") or prod.get("name") or company.get("sector") or "commercial service"
-            raw_imgs = await generate_marketing_images(brief, number_of_images=2, topic_query=topic_q)
+            scenes = await generate_post_visual_scenes(
+                titulo=result.get("title") or "Post Profissional",
+                legenda=result.get("caption") or "",
+                hook=result.get("hook") or "",
+                product_name=prod.get("name") or "",
+                sector=company.get("sector") or "",
+                company_name=company.get("name") or ""
+            )
+            topic_q = f"{prod.get('name', '')} {result.get('hook', '')}".strip() or "business commercial"
+            raw_imgs = await generate_marketing_images(
+                prompt=scenes[0] if scenes else (result.get("visual_briefing") or ""),
+                number_of_images=2,
+                scene_prompts=scenes,
+                topic_query=topic_q
+            )
             for img_data in raw_imgs:
                 if isinstance(img_data, bytes) and len(img_data) > 500:
                     fname = f"studio_img_{uuid.uuid4().hex[:12]}.png"
@@ -911,11 +935,32 @@ Gere um post completo de alta qualidade e pronto a publicar em formato JSON:
 
 @router.post("/marketing/studio/generate-image")
 async def generate_single_studio_image(payload: Dict[str, Any], user: dict = Depends(premium_user)):
-    """Gera uma imagem para o post do Studio sob demanda."""
-    prompt = payload.get("prompt") or payload.get("visual_briefing") or "professional modern commercial business photography, 8k"
-    topic_q = payload.get("title") or payload.get("topic") or "business"
+    """Gera uma imagem para o post do Studio sob demanda com máxima fidelidade ao gancho e produto."""
+    uid = user["id"]
+    company = await resolve_company(uid) or {}
+    
+    hook = payload.get("hook", "")
+    title = payload.get("title", "")
+    caption = payload.get("caption", "")
+    product_name = payload.get("product_name", "")
+    prompt = payload.get("prompt") or payload.get("visual_briefing") or ""
+    
     try:
-        raw_imgs = await generate_marketing_images(prompt, number_of_images=1, topic_query=topic_q)
+        scenes = await generate_post_visual_scenes(
+            titulo=title or prompt or "Post de Negócios",
+            legenda=caption,
+            hook=hook,
+            product_name=product_name,
+            sector=company.get("sector", ""),
+            company_name=company.get("name", "")
+        )
+        topic_q = f"{product_name} {hook}".strip() or "business professional"
+        raw_imgs = await generate_marketing_images(
+            prompt=scenes[0] if scenes else prompt,
+            number_of_images=1,
+            scene_prompts=scenes,
+            topic_query=topic_q
+        )
         if raw_imgs and len(raw_imgs[0]) > 500:
             fname = f"studio_img_{uuid.uuid4().hex[:12]}.png"
             (UPLOAD_DIR / fname).write_bytes(raw_imgs[0])
@@ -1080,7 +1125,7 @@ async def update_pool_item_status(item_id: str, payload: Dict[str, str], user: d
         
     res = await db.marketing_content_pool.update_one(
         {"_id": oid, "user_id": uid, "company_id": cid},
-        {"": {"status": new_status, "updated_at": datetime.now(timezone.utc).isoformat()}}
+        {"$set": {"status": new_status, "updated_at": datetime.now(timezone.utc).isoformat()}}
     )
     if res.matched_count == 0:
         raise HTTPException(status_code=404, detail="Item não encontrado")
@@ -1144,7 +1189,7 @@ async def save_posting_plan(inp: PostingPlanIn, user: dict = Depends(premium_use
     
     await db.marketing_posting_plans.update_one(
         {"user_id": uid, "company_id": cid},
-        {"": doc},
+        {"$set": doc},
         upsert=True
     )
     return {"posting_plan": doc, "message": "Plano de postagens gravado com sucesso"}
@@ -1177,7 +1222,7 @@ async def generate_posting_schedule_slots(user: dict = Depends(premium_user)):
     available_items = await db.marketing_content_pool.find({
         "user_id": uid,
         "company_id": cid,
-        "status": {"": ["READY", "AVAILABLE"]}
+        "status": {"$in": ["READY", "AVAILABLE", "ready", "available"]}
     }).to_list(100)
     
     if not available_items:
@@ -1300,7 +1345,7 @@ async def get_marketing_calendar(view: Optional[str] = "semana", user: dict = De
     slots = await db.marketing_schedule_slots.find({
         "user_id": uid,
         "company_id": cid,
-        "scheduled_at": {"": start_time.isoformat(), "": end_time.isoformat()}
+        "scheduled_at": {"$gte": start_time.isoformat(), "$lte": end_time.isoformat()}
     }).sort("scheduled_at", 1).to_list(300)
     
     out = []
@@ -1341,7 +1386,7 @@ async def move_calendar_slot(inp: MoveSlotIn, user: dict = Depends(premium_user)
     
     await db.marketing_schedule_slots.update_one(
         {"_id": oid},
-        {"": {"scheduled_at": new_time_str, "updated_at": now}}
+        {"$set": {"scheduled_at": new_time_str, "updated_at": now}}
     )
     
     content_id = slot.get("content_id")
@@ -1349,7 +1394,7 @@ async def move_calendar_slot(inp: MoveSlotIn, user: dict = Depends(premium_user)
         try:
             await db.marketing_content_pool.update_one(
                 {"_id": ObjectId(content_id)},
-                {"": {"scheduled_at": new_time_str, "updated_at": now}}
+                {"$set": {"scheduled_at": new_time_str, "updated_at": now}}
             )
         except Exception:
             pass
@@ -1359,7 +1404,7 @@ async def move_calendar_slot(inp: MoveSlotIn, user: dict = Depends(premium_user)
         try:
             await db.social_jobs.update_one(
                 {"_id": ObjectId(job_id)},
-                {"": {"run_at": new_time_str, "updated_at": now}}
+                {"$set": {"run_at": new_time_str, "updated_at": now}}
             )
         except Exception:
             pass
@@ -1463,7 +1508,7 @@ async def evaluate_experiment_endpoint(experiment_id: str, user: dict = Depends(
     now = datetime.now(timezone.utc).isoformat()
     await db.marketing_experiments.update_one(
         {"_id": oid},
-        {"": {
+        {"$set": {
             "status": "COMPLETED",
             "winner_variant_id": winner_id,
             "winning_insight": insight,
@@ -1601,7 +1646,7 @@ async def save_autopilot_config(inp: AutopilotConfigIn, user: dict = Depends(pre
     
     await db.marketing_autopilot_config.update_one(
         {"user_id": uid, "company_id": cid},
-        {"": doc},
+        {"$set": doc},
         upsert=True
     )
     return {"config": doc, "message": "Configurações do Autopilot salvas"}
@@ -1642,7 +1687,7 @@ async def run_autopilot_cycle_endpoint(user: dict = Depends(premium_user)):
     executed_actions = []
     pending_recommendations = []
     
-    counts = await db.marketing_content_pool.count_documents({"user_id": uid, "company_id": cid, "status": {"": ["READY", "AVAILABLE"]}})
+    counts = await db.marketing_content_pool.count_documents({"user_id": uid, "company_id": cid, "status": {"$in": ["READY", "AVAILABLE", "ready", "available"]}})
     plan = await db.marketing_posting_plans.find_one({"user_id": uid, "company_id": cid}) or {}
     daily_rate = plan.get("daily_posts", 2)
     runway_days = counts / max(1, daily_rate)
@@ -1695,7 +1740,7 @@ async def run_autopilot_cycle_endpoint(user: dict = Depends(premium_user)):
         if mode == "AUTOMATICO":
             await db.marketing_posting_plans.update_one(
                 {"user_id": uid, "company_id": cid},
-                {"": {"mode": "INTELIGENTE", "updated_at": now_iso}}
+                {"$set": {"mode": "INTELIGENTE", "updated_at": now_iso}}
             )
             action_time["result"] = "Plano de postagens atualizado para Modo Inteligente."
             executed_actions.append(action_time)
@@ -1734,13 +1779,13 @@ async def decide_autopilot_action(action_id: str, payload: Dict[str, str], user:
         if act.get("action_type") == "OTIMIZAR_HORARIOS":
             await db.marketing_posting_plans.update_one(
                 {"user_id": uid, "company_id": cid},
-                {"": {"mode": "INTELIGENTE", "updated_at": now}}
+                {"$set": {"mode": "INTELIGENTE", "updated_at": now}}
             )
     else:
         new_status = "REJECTED"
         
     await db.marketing_autopilot_logs.update_one(
         {"_id": oid},
-        {"": {"status": new_status, "decided_at": now}}
+        {"$set": {"status": new_status, "decided_at": now}}
     )
     return {"action_id": action_id, "status": new_status, "decision": decision}
