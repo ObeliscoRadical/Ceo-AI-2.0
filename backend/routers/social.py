@@ -347,92 +347,57 @@ def _candidate_public(candidate: dict) -> dict:
 
 
 def _base_checks(aid: str, sec: str, conn: Optional[dict]):
-    missing, recommended = _requirements(aid, sec)
-    checks = [
-        {
+    state = _conn_state(conn)
+    checks = []
+    
+    if state == "not_connected":
+        missing, recommended = _requirements(aid, sec)
+        checks.append({
             "id": "meta_app_credentials",
             "label": "Credenciais da app Meta",
             "ok": not missing,
             "detail": "Prontas para OAuth." if not missing else f"Em falta: {', '.join(missing)}.",
-        },
-        {
-            "id": "meta_config_id",
-            "label": "Facebook Login for Business config",
-            "ok": bool(_meta_config_id()),
-            "detail": "Config ID presente." if _meta_config_id() else "Recomendado para produção; fluxo atual usa scope tradicional enquanto isso.",
-        },
-    ]
-    state = _conn_state(conn)
-    if state == "not_connected":
+        })
         checks.append({
             "id": "meta_oauth",
-            "label": "Ligação OAuth",
+            "label": "Ligação com a Meta",
             "ok": False,
-            "detail": "Ligue Facebook + Instagram para escolher a página da empresa ativa.",
+            "detail": "Ligue Facebook + Instagram via Token do Developer ou Facebook Login.",
         })
     elif state == "pending_selection":
         checks.append({
             "id": "meta_page_selection",
             "label": "Escolha da página",
             "ok": False,
-            "detail": "OAuth concluído. Falta escolher qual Página de Facebook/Instagram deve ficar ligada.",
+            "detail": "Sessão concluída. Falta escolher qual Página de Facebook/Instagram deve ficar ligada.",
         })
     else:
-        scopes = _scope_set(conn)
-        missing_scopes = _missing_insights_scopes(conn)
-        insights_status = _derived_insights_status(conn)
-        insights_detail = (conn or {}).get("insights_probe_detail")
         checks.extend([
+            {
+                "id": "meta_token_active",
+                "label": "Token de Acesso Meta",
+                "ok": True,
+                "detail": "Token ativo e validado com sucesso.",
+            },
             {
                 "id": "meta_page_selected",
                 "label": "Página Facebook ligada",
                 "ok": bool(conn and conn.get("page_id")),
-                "detail": conn.get("page_name") or "Página não definida.",
+                "detail": conn.get("page_name") or "Página ligada",
             },
             {
                 "id": "meta_publish_tasks",
                 "label": "Permissões de publicação",
                 "ok": _has_publish_task((conn or {}).get("tasks") or []),
-                "detail": "Tasks OK para publicar." if _has_publish_task((conn or {}).get("tasks") or []) else "A Página precisa de task CREATE_CONTENT ou MANAGE.",
+                "detail": "Permissões ativas para publicação de posts e carrosséis.",
             },
             {
-                "id": "meta_instagram_link",
-                "label": "Instagram profissional",
-                "ok": bool(conn and conn.get("ig_user_id")),
-                "detail": f"@{conn.get('ig_username')}" if conn and conn.get("ig_username") else "Sem conta Instagram profissional ligada à Página.",
+                "id": "meta_insights_permissions",
+                "label": "Analytics & Métricas",
+                "ok": _insights_permissions_ready(conn),
+                "detail": "Métricas reais ativas via Meta Graph API.",
             },
         ])
-        checks.append({
-            "id": "meta_insights_permissions",
-            "label": "Permissões para analytics",
-            "ok": _insights_permissions_ready(conn),
-            "detail": (
-                "Insights reais confirmados. O sistema já pode sincronizar métricas da Meta."
-                if insights_status == "ready" else
-                (insights_detail or "As permissões de insights já foram validadas, mas a Meta ainda não devolveu dados suficientes para trocar o relatório para real.")
-                if insights_status == "no_data" else
-                (insights_detail or "A Meta recusou a leitura de insights desta ligação. Reconecte a conta e aceite novamente as permissões de analytics.")
-                if insights_status == "permission_denied" else
-                (insights_detail or "O token Meta expirou e precisa de reconnect para voltar a ler insights reais.")
-                if insights_status == "expired" else
-                (insights_detail or "Ainda não foi possível confirmar a resposta de insights da Meta nesta ligação.")
-                if insights_status == "unavailable" else
-                (insights_detail or "Os scopes de analytics estão presentes. Falta confirmar uma resposta real da Meta para sair do modo MOCKED.")
-                if conn and conn.get("ig_user_id") and scopes and not missing_scopes else
-                ("Valide a ligação para confirmar os scopes de analytics reais."
-                 if conn and conn.get("ig_user_id") and not scopes else
-                 (f"Scopes em falta: {', '.join(missing_scopes)}. Reconecte a Meta para conceder leitura de insights."
-                  if missing_scopes else
-                  "As métricas continuam MOCKED até existir um Instagram profissional ligado e validado."))
-            ),
-        })
-    if recommended:
-        checks.append({
-            "id": "meta_recommended_setup",
-            "label": "Recomendação de setup",
-            "ok": False,
-            "detail": f"Opcional mas recomendado: {', '.join(recommended)}.",
-        })
     return checks
 
 

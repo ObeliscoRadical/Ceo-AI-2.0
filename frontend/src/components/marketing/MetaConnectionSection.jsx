@@ -33,6 +33,7 @@ export const MetaConnectionSection = ({ api, onRefreshAll }) => {
   const [savingConfig, setSavingConfig] = useState(false);
   const [diagnosticsBusy, setDiagnosticsBusy] = useState(false);
   const [disconnecting, setDisconnecting] = useState(false);
+  const [showReconfig, setShowReconfig] = useState(false);
   const [activeMode, setActiveMode] = useState("token"); // "token" | "oauth" | "config"
 
   // Form states
@@ -202,53 +203,60 @@ export const MetaConnectionSection = ({ api, onRefreshAll }) => {
 
           <div className="flex items-center gap-2 flex-wrap">
             <Button onClick={handleRunDiagnostics} disabled={diagnosticsBusy} variant="outline" size="sm" className="rounded-xl border-white/15 text-slate-200 hover:bg-white/10">
-              {diagnosticsBusy ? <Loader2 className="w-4 h-4 animate-spin mr-1.5" /> : <RefreshCw className="w-4 h-4 mr-1.5 text-blue-400" />}
-              Validar Ligação
+              {diagnosticsBusy ? <Loader2 className="w-4 h-4 animate-spin mr-1.5" /> : <RefreshCw className="w-4 h-4 mr-1.5 text-emerald-400" />}
+              Testar Conexão em Tempo Real
             </Button>
             {data.connected && (
-              <Button onClick={handleDisconnect} disabled={disconnecting} variant="outline" size="sm" className="rounded-xl border-red-500/30 text-red-300 hover:bg-red-500/10">
-                {disconnecting ? <Loader2 className="w-4 h-4 animate-spin mr-1.5" /> : <Unlink className="w-4 h-4 mr-1.5" />}
-                Desligar
-              </Button>
+              <>
+                <Button onClick={() => setShowReconfig(!showReconfig)} variant="outline" size="sm" className="rounded-xl border-white/15 text-slate-300 hover:bg-white/10">
+                  <Settings2 className="w-4 h-4 mr-1.5 text-pink-400" />
+                  {showReconfig ? "Ocultar Formulário" : "Trocar Token / Reconfigurar"}
+                </Button>
+                <Button onClick={handleDisconnect} disabled={disconnecting} variant="outline" size="sm" className="rounded-xl border-red-500/30 text-red-300 hover:bg-red-500/10">
+                  {disconnecting ? <Loader2 className="w-4 h-4 animate-spin mr-1.5" /> : <Unlink className="w-4 h-4 mr-1.5" />}
+                  Desligar
+                </Button>
+              </>
             )}
           </div>
         </div>
       </div>
 
-      {/* Painel de Configuração / Conexão */}
-      <div className="p-6 rounded-2xl border border-white/10 bg-white/[0.02] space-y-6">
-        <div className="flex items-center justify-between border-b border-white/10 pb-4 flex-wrap gap-3">
-          <div className="flex items-center gap-2">
-            <KeyRound className="w-5 h-5 text-amber-400" />
-            <h4 className="font-bold text-white">Métodos de Ligação com Meta</h4>
+      {/* Painel de Configuração / Conexão (Mostra se não estiver ligado ou se o utilizador clicar em Trocar Token) */}
+      {(!data.connected || showReconfig) && (
+        <div className="p-6 rounded-2xl border border-white/10 bg-white/[0.02] space-y-6">
+          <div className="flex items-center justify-between border-b border-white/10 pb-4 flex-wrap gap-3">
+            <div className="flex items-center gap-2">
+              <KeyRound className="w-5 h-5 text-amber-400" />
+              <h4 className="font-bold text-white">Configurar Ligação com Meta</h4>
+            </div>
+            <div className="flex items-center gap-1 bg-black/40 p-1 rounded-xl border border-white/10">
+              <button
+                onClick={() => setActiveMode("token")}
+                className={`px-3 py-1.5 rounded-lg text-xs font-bold transition-all ${
+                  activeMode === "token" ? "bg-pink-600 text-white shadow-md" : "text-slate-400 hover:text-white"
+                }`}
+              >
+                ⚡ Token do Developer (Direto)
+              </button>
+              <button
+                onClick={() => setActiveMode("oauth")}
+                className={`px-3 py-1.5 rounded-lg text-xs font-bold transition-all ${
+                  activeMode === "oauth" ? "bg-blue-600 text-white shadow-md" : "text-slate-400 hover:text-white"
+                }`}
+              >
+                🔗 Facebook Login (OAuth)
+              </button>
+              <button
+                onClick={() => setActiveMode("config")}
+                className={`px-3 py-1.5 rounded-lg text-xs font-bold transition-all ${
+                  activeMode === "config" ? "bg-purple-600 text-white shadow-md" : "text-slate-400 hover:text-white"
+                }`}
+              >
+                ⚙️ Chaves da App
+              </button>
+            </div>
           </div>
-          <div className="flex items-center gap-1 bg-black/40 p-1 rounded-xl border border-white/10">
-            <button
-              onClick={() => setActiveMode("token")}
-              className={`px-3 py-1.5 rounded-lg text-xs font-bold transition-all ${
-                activeMode === "token" ? "bg-pink-600 text-white shadow-md" : "text-slate-400 hover:text-white"
-              }`}
-            >
-              ⚡ Token do Developer (Direto)
-            </button>
-            <button
-              onClick={() => setActiveMode("oauth")}
-              className={`px-3 py-1.5 rounded-lg text-xs font-bold transition-all ${
-                activeMode === "oauth" ? "bg-blue-600 text-white shadow-md" : "text-slate-400 hover:text-white"
-              }`}
-            >
-              🔗 Facebook Login (OAuth)
-            </button>
-            <button
-              onClick={() => setActiveMode("config")}
-              className={`px-3 py-1.5 rounded-lg text-xs font-bold transition-all ${
-                activeMode === "config" ? "bg-purple-600 text-white shadow-md" : "text-slate-400 hover:text-white"
-              }`}
-            >
-              ⚙️ Chaves da App
-            </button>
-          </div>
-        </div>
 
         {/* 1. MODO TOKEN DIRETO (RECOMENDADO PARA DEVELOPERS) */}
         {activeMode === "token" && (
@@ -398,6 +406,7 @@ export const MetaConnectionSection = ({ api, onRefreshAll }) => {
           </div>
         )}
       </div>
+      )}
 
       {/* Checklist de Permissões */}
       <div className="p-6 rounded-2xl border border-white/10 bg-white/[0.02] space-y-4">
