@@ -196,6 +196,7 @@ class AutopilotConfigIn(BaseModel):
 # ============================================================================
 
 @router.get("/marketing/products")
+@router.get("/marketing/vitrine")
 async def list_products(user: dict = Depends(premium_user)):
     """Lista todos os produtos da Vitrine com estatísticas associadas."""
     uid = user["id"]
