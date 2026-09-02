@@ -2,6 +2,7 @@
 Integra: Vitrine + Produtos + Campanhas + Criador de Marketing + Studio + Content Pool + Postagens + Calendário + Scheduler + A/B Test + Growth Engine + Autopilot.
 """
 import asyncio
+import base64
 import os
 import uuid
 from datetime import datetime, timezone, timedelta
