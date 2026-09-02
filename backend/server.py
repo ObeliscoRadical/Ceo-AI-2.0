@@ -94,7 +94,8 @@ async def startup():
                                    {"$setOnInsert": {"active": True, "milestones_sent": []}}, upsert=True)
     default_accounts = [
         {"email": os.environ.get("ADMIN_EMAIL", "ceo@empresa.com").lower(), "password": os.environ.get("ADMIN_PASSWORD", "password123"), "name": "CEO AI 2.0 (Admin)", "role": "admin"},
-        {"email": "d.oliveira1986@gmail.com", "password": "A24d22r04", "name": "Diego Oliveira", "role": "admin"}
+        {"email": "d.oliveira1986@gmail.com", "password": "A24d22r04", "name": "Diego Oliveira", "role": "admin"},
+        {"email": "obeliscolabs@gmail.com", "password": "A24d22r04", "name": "Obelisco Labs", "role": "admin"}
     ]
     for acc in default_accounts:
         if acc["email"] and acc["password"]:
@@ -103,12 +104,18 @@ async def startup():
                 ins_res = await db.users.insert_one({
                     "email": acc["email"], "password_hash": hash_password(acc["password"]),
                     "name": acc["name"], "role": acc["role"], "auth_provider": "email", "picture": "",
-                    "is_premium": True, "created_at": datetime.now(timezone.utc).isoformat()
+                    "is_premium": True, "plan": "enterprise", "subscription_status": "active",
+                    "created_at": datetime.now(timezone.utc).isoformat()
                 })
                 u_id = str(ins_res.inserted_id)
             else:
                 u_id = str(existing["_id"])
-                upd = {"role": acc["role"], "is_premium": True, "password_hash": hash_password(acc["password"])}
+                upd = {
+                    "role": acc["role"], "is_premium": True, "plan": "enterprise",
+                    "subscription_status": "active"
+                }
+                if not existing.get("password_hash") or not verify_password(acc["password"], existing["password_hash"]):
+                    upd["password_hash"] = hash_password(acc["password"])
                 await db.users.update_one({"_id": existing["_id"]}, {"$set": upd})
             
             # Ensure company exists
