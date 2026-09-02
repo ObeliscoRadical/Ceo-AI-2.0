@@ -170,67 +170,97 @@ export const TikTokConnectionSection = ({ api, onRefreshAll }) => {
       </div>
 
       {(!data.connected || showConfig) && (
-        <div className="p-5 rounded-xl border border-white/10 bg-white/[0.02] space-y-4">
-          <div className="p-4 rounded-xl border border-pink-500/20 bg-pink-500/5 space-y-2">
-            <div className="flex items-center justify-between">
-              <span className="text-xs font-bold text-pink-300 flex items-center gap-1.5">
-                <Video className="w-4 h-4" /> Configuração do TikTok for Developers
+        <div className="p-6 rounded-2xl border border-cyan-500/20 bg-gradient-to-br from-cyan-950/20 via-black/40 to-pink-950/20 space-y-5">
+          <div className="flex items-center justify-between flex-wrap gap-2">
+            <div className="flex items-center gap-2">
+              <span className="p-1.5 rounded-lg bg-cyan-500/10 text-cyan-400 border border-cyan-500/30">
+                <Video className="w-4 h-4" />
+              </span>
+              <h4 className="font-bold text-white text-sm">Autenticação 1-Clique TikTok Developers</h4>
+            </div>
+            {data.configured && (
+              <span className="text-[11px] font-semibold px-2.5 py-0.5 rounded-full bg-emerald-500/20 text-emerald-300 border border-emerald-500/30 flex items-center gap-1">
+                <CheckCircle2 className="w-3 h-3" /> App Oficial Configurada ({data.client_key ? `${data.client_key.slice(0, 4)}••••` : 'awes••••'})
+              </span>
+            )}
+          </div>
+
+          <div className="p-4 rounded-xl border border-white/10 bg-black/40 space-y-2">
+            <div className="flex items-center justify-between flex-wrap gap-2">
+              <span className="text-xs text-slate-300">
+                A aplicação <strong>CEO AI</strong> no TikTok for Developers está configurada para login e publicação direta de vídeos.
               </span>
               <a
-                href="https://developers.tiktok.com/"
+                href="https://developers.tiktok.com/apps"
                 target="_blank"
                 rel="noreferrer"
-                className="text-xs font-semibold text-pink-400 hover:text-pink-300 flex items-center gap-1 underline"
+                className="text-xs font-semibold text-cyan-400 hover:text-cyan-300 flex items-center gap-1 underline"
               >
-                Abrir Portal TikTok Developers <ExternalLink className="w-3 h-3" />
+                Painel TikTok Developers <ExternalLink className="w-3 h-3" />
               </a>
             </div>
-            <p className="text-xs text-slate-300">
-              No seu portal do TikTok Developers, crie uma App com os produtos <strong>Content Posting API</strong> e <strong>Login Kit</strong>.
-            </p>
             <div className="pt-2">
-              <span className="text-[10px] uppercase font-bold text-slate-400 block">Redirect URI Obrigatório no TikTok:</span>
-              <code className="text-xs text-pink-300 font-mono bg-black/40 px-2 py-1 rounded mt-1 block select-all">
-                {data.redirect_uri}
+              <span className="text-[10px] uppercase font-bold text-slate-400 block">Redirect URI de Callback:</span>
+              <code className="text-xs text-cyan-300 font-mono bg-black/60 px-2.5 py-1 rounded mt-1 block select-all border border-white/10">
+                {data.redirect_uri || "https://ceo-ai-app-production.up.railway.app/api/tiktok/callback"}
               </code>
             </div>
           </div>
 
-          <div className="grid sm:grid-cols-2 gap-3">
-            <div>
-              <label className="text-[10px] uppercase font-bold text-slate-400">TikTok Client Key *</label>
-              <Input
-                placeholder="Ex: aw89xzy..."
-                value={clientKey}
-                onChange={(e) => setClientKey(e.target.value)}
-                className="bg-white/[0.03] border-white/10 text-white text-xs mt-1"
-              />
-            </div>
-            <div>
-              <label className="text-[10px] uppercase font-bold text-slate-400">TikTok Client Secret *</label>
-              <Input
-                type="password"
-                placeholder="Ex: 9b2d88fa..."
-                value={clientSecret}
-                onChange={(e) => setClientSecret(e.target.value)}
-                className="bg-white/[0.03] border-white/10 text-white text-xs font-mono mt-1"
-              />
-            </div>
-          </div>
-
+          {/* Botão de 1-Clique Principal */}
           <Button
-            onClick={async () => {
-              if (!data.configured && (clientKey.trim() && clientSecret.trim())) {
-                await handleSaveConfig();
-              }
-              handleConnectOAuth();
-            }}
-            disabled={!data.configured && (!clientKey.trim() || !clientSecret.trim())}
-            className="w-full rounded-xl bg-gradient-to-r from-pink-600 via-purple-600 to-black hover:from-pink-500 hover:to-purple-500 text-white font-bold py-4 text-sm shadow-xl flex items-center justify-center gap-2"
+            onClick={handleConnectOAuth}
+            className="w-full rounded-xl bg-gradient-to-r from-cyan-500 via-pink-500 to-purple-600 hover:from-cyan-400 hover:to-purple-500 text-white font-bold py-4 text-sm shadow-xl flex items-center justify-center gap-2 transition-all hover:scale-[1.01]"
           >
             <Video className="w-5 h-5" />
-            <span>Entrar com TikTok & Autorizar Publicações</span>
+            <span>Entrar com TikTok & Autorizar Automação</span>
           </Button>
+
+          {/* Drawer / Configuração Manual de Chaves */}
+          <div className="pt-3 border-t border-white/10">
+            <button
+              onClick={() => setShowConfig(!showConfig)}
+              className="text-xs text-slate-400 hover:text-white flex items-center gap-1.5 transition-colors"
+            >
+              <KeyRound className="w-3.5 h-3.5 text-pink-400" />
+              {showConfig ? "Ocultar campos de credenciais" : "Ver / Alterar Client Key & Client Secret da App"}
+            </button>
+
+            {showConfig && (
+              <div className="grid sm:grid-cols-2 gap-3 pt-3">
+                <div>
+                  <label className="text-[10px] uppercase font-bold text-slate-400">TikTok Client Key</label>
+                  <Input
+                    placeholder="Ex: awes1an73ukfkebw"
+                    value={clientKey}
+                    onChange={(e) => setClientKey(e.target.value)}
+                    className="bg-white/[0.03] border-white/10 text-white text-xs mt-1"
+                  />
+                </div>
+                <div>
+                  <label className="text-[10px] uppercase font-bold text-slate-400">TikTok Client Secret</label>
+                  <Input
+                    type="password"
+                    placeholder="Ex: vRH35UF8uX91..."
+                    value={clientSecret}
+                    onChange={(e) => setClientSecret(e.target.value)}
+                    className="bg-white/[0.03] border-white/10 text-white text-xs font-mono mt-1"
+                  />
+                </div>
+                <div className="sm:col-span-2 pt-2">
+                  <Button
+                    onClick={handleSaveConfig}
+                    disabled={savingConfig || !clientKey.trim() || !clientSecret.trim()}
+                    size="sm"
+                    className="w-full rounded-xl bg-cyan-600 hover:bg-cyan-500 text-white font-bold"
+                  >
+                    {savingConfig ? <Loader2 className="w-4 h-4 animate-spin mr-2" /> : <ShieldCheck className="w-4 h-4 mr-2" />}
+                    Guardar Chaves no Backend
+                  </Button>
+                </div>
+              </div>
+            )}
+          </div>
         </div>
       )}
     </div>

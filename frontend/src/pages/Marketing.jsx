@@ -49,7 +49,7 @@ const TABS = [
   { id: "experimentos", label: "Variações & A/B", icon: Split },
   { id: "analytics", label: "Analytics 360°", icon: BarChart3 },
   { id: "autopilot", label: "Growth & Autopilot", icon: Bot },
-  { id: "conexoes", label: "Meta & Redes", icon: Instagram },
+  { id: "conexoes", label: "Redes (Meta & TikTok)", icon: Share2 },
 ];
 
 export default function Marketing() {
@@ -547,14 +547,14 @@ export default function Marketing() {
             />
           )}
 
-          {/* 12. CONEXÕES META */}
+          {/* 12. CONEXÕES META & TIKTOK */}
           {activeTab === "conexoes" && (
             <div className="space-y-6">
               <div className="flex items-center gap-2">
-                <div className="p-2 rounded-xl bg-pink-500/10 text-pink-400 border border-pink-500/20">
-                  <Instagram className="w-5 h-5" />
+                <div className="p-2 rounded-xl bg-gradient-to-r from-blue-500/20 via-pink-500/20 to-purple-500/20 text-white border border-white/10">
+                  <Share2 className="w-5 h-5" />
                 </div>
-                <h2 className="text-xl font-bold tracking-tight text-white">Ligação com Meta (Instagram & Facebook)</h2>
+                <h2 className="text-xl font-bold tracking-tight text-white">Hub de Redes Sociais · Meta (Facebook & Instagram) & TikTok</h2>
               </div>
               <MetaConnectionSection api={api} onRefreshAll={() => loadAllData(true)} />
             </div>

@@ -72,6 +72,7 @@ async def tiktok_status(user: dict = Depends(premium_user)):
     
     return {
         "configured": bool(ck and cs),
+        "client_key": ck,
         "client_key_present": bool(ck),
         "redirect_uri": _redirect_uri(),
         "connected": bool(conn and conn.get("access_token")),

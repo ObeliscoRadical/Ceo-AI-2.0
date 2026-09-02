@@ -22,7 +22,9 @@ import {
   Unlink,
   Zap,
   Edit3,
-  X
+  X,
+  Share2,
+  Video
 } from "lucide-react";
 import { toast } from "sonner";
 import { TikTokConnectionSection } from "./TikTokConnectionSection";
@@ -43,6 +45,7 @@ export const MetaConnectionSection = ({ api, onRefreshAll }) => {
   const [disconnecting, setDisconnecting] = useState(false);
   const [showReconfig, setShowReconfig] = useState(false);
   const [activeMode, setActiveMode] = useState("oauth"); // "oauth" | "token" | "config"
+  const [networkTab, setNetworkTab] = useState("all"); // "all" | "meta" | "tiktok" | "queue"
 
   // Jobs & History state
   const [jobs, setJobs] = useState([]);
@@ -243,8 +246,63 @@ export const MetaConnectionSection = ({ api, onRefreshAll }) => {
 
   return (
     <div className="space-y-6">
-      {/* 1. ESTADO DA CONEXÃO PRINCIPAL */}
-      <div className="p-6 rounded-2xl border border-white/10 bg-gradient-to-br from-white/[0.04] to-black/40 relative overflow-hidden">
+      {/* SELETOR PRINCIPAL DE REDES SOCIAIS */}
+      <div className="flex items-center gap-2 p-1.5 rounded-2xl bg-black/40 border border-white/10 flex-wrap">
+        <button
+          onClick={() => setNetworkTab("all")}
+          className={`flex items-center gap-2 px-4 py-2.5 rounded-xl text-xs font-bold transition-all ${
+            networkTab === "all"
+              ? "bg-white/15 text-white border border-white/20 shadow-md shadow-white/5"
+              : "text-slate-400 hover:text-white hover:bg-white/5"
+          }`}
+        >
+          <Share2 className="w-4 h-4 text-emerald-400" />
+          Todas as Redes
+        </button>
+
+        <button
+          onClick={() => setNetworkTab("meta")}
+          className={`flex items-center gap-2 px-4 py-2.5 rounded-xl text-xs font-bold transition-all ${
+            networkTab === "meta"
+              ? "bg-gradient-to-r from-blue-600/30 to-pink-600/30 text-white border border-pink-500/40 shadow-md shadow-pink-500/10"
+              : "text-slate-400 hover:text-white hover:bg-white/5"
+          }`}
+        >
+          <Facebook className="w-4 h-4 text-blue-400" />
+          <Instagram className="w-4 h-4 text-pink-400" />
+          Meta (Facebook & Instagram)
+          {data.connected && <span className="w-2 h-2 rounded-full bg-emerald-400" />}
+        </button>
+
+        <button
+          onClick={() => setNetworkTab("tiktok")}
+          className={`flex items-center gap-2 px-4 py-2.5 rounded-xl text-xs font-bold transition-all ${
+            networkTab === "tiktok"
+              ? "bg-gradient-to-r from-cyan-600/30 to-pink-600/30 text-white border border-cyan-500/40 shadow-md shadow-cyan-500/10"
+              : "text-slate-400 hover:text-white hover:bg-white/5"
+          }`}
+        >
+          <Video className="w-4 h-4 text-cyan-400" />
+          TikTok Developers
+        </button>
+
+        <button
+          onClick={() => setNetworkTab("queue")}
+          className={`flex items-center gap-2 px-4 py-2.5 rounded-xl text-xs font-bold transition-all ${
+            networkTab === "queue"
+              ? "bg-purple-600/30 text-white border border-purple-500/40 shadow-md shadow-purple-500/10"
+              : "text-slate-400 hover:text-white hover:bg-white/5"
+          }`}
+        >
+          <Clock className="w-4 h-4 text-purple-400" />
+          Fila & Cronograma ({queuedJobs.length})
+        </button>
+      </div>
+
+      {/* 1. META (FACEBOOK & INSTAGRAM) */}
+      {(networkTab === "all" || networkTab === "meta") && (
+        <div className="space-y-6">
+          <div className="p-6 rounded-2xl border border-white/10 bg-gradient-to-br from-white/[0.04] to-black/40 relative overflow-hidden">
         <div className="flex items-start justify-between gap-4 flex-wrap">
           <div className="space-y-2 max-w-2xl">
             <div className="flex items-center gap-3 flex-wrap">
@@ -479,144 +537,152 @@ export const MetaConnectionSection = ({ api, onRefreshAll }) => {
           )}
         </div>
       )}
-
-      {/* 2.5 TIKTOK CONTENT POSTING & LOGIN KIT */}
-      <TikTokConnectionSection api={api} onRefreshAll={onRefreshAll} />
-
-      {/* 3. FILA DE POSTAGENS PROGRAMADAS ("TAL HORA VAI SAIR ESSE POST") */}
-      <div className="p-6 rounded-2xl border border-white/10 bg-white/[0.02] space-y-4">
-        <div className="flex items-center justify-between flex-wrap gap-3">
-          <div className="flex items-center gap-2">
-            <Clock className="w-5 h-5 text-pink-400" />
-            <h4 className="font-bold text-white">Cronograma & Fila de Publicações</h4>
-            <span className="text-xs px-2.5 py-0.5 rounded-full bg-pink-500/20 text-pink-300 font-semibold border border-pink-500/30">
-              {queuedJobs.length} agendados
-            </span>
-          </div>
-          <Button onClick={loadStatus} variant="ghost" size="sm" className="text-slate-400 hover:text-white">
-            <RefreshCw className="w-3.5 h-3.5 mr-1.5" /> Atualizar Fila
-          </Button>
         </div>
+      )}
 
-        {queuedJobs.length === 0 ? (
-          <div className="p-8 rounded-xl border border-white/5 bg-black/20 text-center space-y-2">
-            <Calendar className="w-8 h-8 text-slate-500 mx-auto" />
-            <p className="text-sm font-semibold text-white">Não há publicações em fila neste momento</p>
-            <p className="text-xs text-slate-400 max-w-md mx-auto">
-              Vá ao <strong>Criador 360°</strong> ou ao <strong>Studio</strong>, gere e aprove conteúdos ou ative o <strong>Autopilot</strong> para preencher automaticamente o cronograma!
-            </p>
-          </div>
-        ) : (
-          <div className="grid gap-3">
-            {queuedJobs.map((job) => {
-              const runDate = job.run_at ? new Date(job.run_at) : null;
-              const formattedDate = runDate ? runDate.toLocaleString("pt-PT", {
-                weekday: "short", day: "2-digit", month: "short", hour: "2-digit", minute: "2-digit"
-              }) : "Horário Pendente";
+      {/* 2. TIKTOK CONTENT POSTING & LOGIN KIT */}
+      {(networkTab === "all" || networkTab === "tiktok") && (
+        <TikTokConnectionSection api={api} onRefreshAll={onRefreshAll} />
+      )}
 
-              return (
-                <div key={job.id} className="p-4 rounded-xl border border-white/10 bg-gradient-to-r from-black/40 to-white/[0.02] flex items-center justify-between gap-4 flex-wrap hover:border-pink-500/30 transition-all">
-                  <div className="flex items-center gap-3.5 min-w-[280px] max-w-xl">
-                    {job.image_url ? (
-                      <img src={job.image_url} alt="Thumbnail" className="w-14 h-14 rounded-lg object-cover border border-white/10 shrink-0" />
-                    ) : (
-                      <div className="w-14 h-14 rounded-lg bg-white/5 border border-white/10 flex items-center justify-center shrink-0">
-                        <Instagram className="w-6 h-6 text-slate-500" />
-                      </div>
-                    )}
-                    <div className="space-y-1 overflow-hidden">
-                      <div className="flex items-center gap-2 flex-wrap">
-                        <span className="text-[10px] uppercase tracking-wider font-bold px-2 py-0.5 rounded bg-blue-500/20 text-blue-300 border border-blue-500/30">
-                          🕒 {formattedDate}
-                        </span>
-                        {(job.platforms || ["Instagram"]).map((p, i) => (
-                          <span key={i} className="text-[10px] font-bold px-2 py-0.5 rounded bg-pink-500/10 text-pink-300">
-                            {p}
-                          </span>
-                        ))}
-                      </div>
-                      <p className="text-xs font-semibold text-white line-clamp-1">{job.title || "Publicação"}</p>
-                      <p className="text-[11px] text-slate-400 line-clamp-2">{job.caption || "Sem legenda"}</p>
-                    </div>
-                  </div>
-
-                  <div className="flex items-center gap-2 flex-wrap">
-                    <Button
-                      onClick={() => handlePublishJobNow(job.id)}
-                      disabled={publishingJobId === job.id}
-                      size="sm"
-                      className="rounded-xl bg-gradient-to-r from-pink-600 to-purple-600 hover:from-pink-500 hover:to-purple-500 text-white font-bold text-xs shadow-md"
-                    >
-                      {publishingJobId === job.id ? <Loader2 className="w-3.5 h-3.5 animate-spin mr-1.5" /> : <Play className="w-3.5 h-3.5 mr-1.5 fill-current" />}
-                      Publicar Agora
-                    </Button>
-                    <Button
-                      onClick={() => handleOpenEditJob(job)}
-                      variant="outline"
-                      size="sm"
-                      className="rounded-xl border-white/15 text-slate-300 hover:bg-white/10 text-xs"
-                    >
-                      <Edit3 className="w-3.5 h-3.5 mr-1" /> Editar
-                    </Button>
-                    <Button
-                      onClick={() => handleDeleteJob(job.id)}
-                      disabled={deletingJobId === job.id}
-                      variant="outline"
-                      size="sm"
-                      className="rounded-xl border-red-500/20 text-red-400 hover:bg-red-500/10 text-xs"
-                    >
-                      {deletingJobId === job.id ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : <Trash2 className="w-3.5 h-3.5" />}
-                    </Button>
-                  </div>
-                </div>
-              );
-            })}
-          </div>
-        )}
-      </div>
-
-      {/* 4. HISTÓRICO DE PUBLICAÇÕES REALIZADAS */}
-      {publishedPosts.length > 0 && (
-        <div className="p-6 rounded-2xl border border-white/10 bg-white/[0.02] space-y-4">
-          <div className="flex items-center justify-between">
-            <div className="flex items-center gap-2">
-              <CheckCircle2 className="w-5 h-5 text-emerald-400" />
-              <h4 className="font-bold text-white">Histórico de Publicações Realizadas</h4>
-              <span className="text-xs px-2.5 py-0.5 rounded-full bg-emerald-500/20 text-emerald-300 font-semibold border border-emerald-500/30">
-                {publishedPosts.length} posts
-              </span>
+      {/* 3. FILA DE POSTAGENS PROGRAMADAS & HISTÓRICO */}
+      {(networkTab === "all" || networkTab === "queue") && (
+        <div className="space-y-6">
+          <div className="p-6 rounded-2xl border border-white/10 bg-white/[0.02] space-y-4">
+            <div className="flex items-center justify-between flex-wrap gap-3">
+              <div className="flex items-center gap-2">
+                <Clock className="w-5 h-5 text-pink-400" />
+                <h4 className="font-bold text-white">Cronograma & Fila de Publicações</h4>
+                <span className="text-xs px-2.5 py-0.5 rounded-full bg-pink-500/20 text-pink-300 font-semibold border border-pink-500/30">
+                  {queuedJobs.length} agendados
+                </span>
+              </div>
+              <Button onClick={loadStatus} variant="ghost" size="sm" className="text-slate-400 hover:text-white">
+                <RefreshCw className="w-3.5 h-3.5 mr-1.5" /> Atualizar Fila
+              </Button>
             </div>
+
+            {queuedJobs.length === 0 ? (
+              <div className="p-8 rounded-xl border border-white/5 bg-black/20 text-center space-y-2">
+                <Calendar className="w-8 h-8 text-slate-500 mx-auto" />
+                <p className="text-sm font-semibold text-white">Não há publicações em fila neste momento</p>
+                <p className="text-xs text-slate-400 max-w-md mx-auto">
+                  Vá ao <strong>Criador 360°</strong> ou ao <strong>Studio</strong>, gere e aprove conteúdos ou ative o <strong>Autopilot</strong> para preencher automaticamente o cronograma!
+                </p>
+              </div>
+            ) : (
+              <div className="grid gap-3">
+                {queuedJobs.map((job) => {
+                  const runDate = job.run_at ? new Date(job.run_at) : null;
+                  const formattedDate = runDate ? runDate.toLocaleString("pt-PT", {
+                    weekday: "short", day: "2-digit", month: "short", hour: "2-digit", minute: "2-digit"
+                  }) : "Horário Pendente";
+
+                  return (
+                    <div key={job.id} className="p-4 rounded-xl border border-white/10 bg-gradient-to-r from-black/40 to-white/[0.02] flex items-center justify-between gap-4 flex-wrap hover:border-pink-500/30 transition-all">
+                      <div className="flex items-center gap-3.5 min-w-[280px] max-w-xl">
+                        {job.image_url ? (
+                          <img src={job.image_url} alt="Thumbnail" className="w-16 h-16 rounded-lg object-cover border border-white/10 flex-shrink-0" />
+                        ) : (
+                          <div className="w-16 h-16 rounded-lg bg-pink-500/10 border border-pink-500/20 flex items-center justify-center flex-shrink-0 text-pink-400">
+                            <Clock className="w-6 h-6" />
+                          </div>
+                        )}
+                        <div className="space-y-1">
+                          <div className="flex items-center gap-2 flex-wrap">
+                            <span className="text-[11px] font-bold px-2 py-0.5 rounded-full bg-pink-500/20 text-pink-300 border border-pink-500/30">
+                              {formattedDate}
+                            </span>
+                            {(job.networks || ["facebook", "instagram"]).map((net) => (
+                              <span key={net} className="text-[10px] font-semibold px-2 py-0.5 rounded bg-white/5 text-slate-300 border border-white/10 capitalize">
+                                {net}
+                              </span>
+                            ))}
+                          </div>
+                          <p className="text-xs font-semibold text-white line-clamp-1">{job.title || "Publicação"}</p>
+                          <p className="text-[11px] text-slate-400 line-clamp-2">{job.caption || "Sem legenda"}</p>
+                        </div>
+                      </div>
+
+                      <div className="flex items-center gap-2 flex-wrap">
+                        <Button
+                          onClick={() => handlePublishJobNow(job.id)}
+                          disabled={publishingJobId === job.id}
+                          size="sm"
+                          className="rounded-xl bg-gradient-to-r from-pink-600 to-purple-600 hover:from-pink-500 hover:to-purple-500 text-white font-bold text-xs shadow-md"
+                        >
+                          {publishingJobId === job.id ? <Loader2 className="w-3.5 h-3.5 animate-spin mr-1.5" /> : <Play className="w-3.5 h-3.5 mr-1.5 fill-current" />}
+                          Publicar Agora
+                        </Button>
+                        <Button
+                          onClick={() => handleOpenEditJob(job)}
+                          variant="outline"
+                          size="sm"
+                          className="rounded-xl border-white/15 text-slate-300 hover:bg-white/10 text-xs"
+                        >
+                          <Edit3 className="w-3.5 h-3.5 mr-1" /> Editar
+                        </Button>
+                        <Button
+                          onClick={() => handleDeleteJob(job.id)}
+                          disabled={deletingJobId === job.id}
+                          variant="outline"
+                          size="sm"
+                          className="rounded-xl border-red-500/20 text-red-400 hover:bg-red-500/10 text-xs"
+                        >
+                          {deletingJobId === job.id ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : <Trash2 className="w-3.5 h-3.5" />}
+                        </Button>
+                      </div>
+                    </div>
+                  );
+                })}
+              </div>
+            )}
           </div>
 
-          <div className="grid sm:grid-cols-2 lg:grid-cols-3 gap-3">
-            {publishedPosts.map((post) => (
-              <div key={post.id} className="p-3.5 rounded-xl border border-white/10 bg-black/30 space-y-2.5 flex flex-col justify-between">
-                <div className="space-y-2">
-                  {post.image_url && (
-                    <img src={post.image_url} alt="Post" className="w-full h-32 rounded-lg object-cover border border-white/10" />
-                  )}
-                  <div>
-                    <span className="text-[10px] text-slate-400">
-                      Publicado em {new Date(post.created_at).toLocaleString("pt-PT")}
-                    </span>
-                    <p className="text-xs font-bold text-white mt-0.5 line-clamp-1">{post.post_title}</p>
-                    <p className="text-[11px] text-slate-300 line-clamp-2 mt-1">{post.caption}</p>
-                  </div>
-                </div>
-
-                <div className="flex items-center justify-between pt-2 border-t border-white/10">
-                  <span className="text-[10px] font-bold text-emerald-400 flex items-center gap-1">
-                    <CheckCircle2 className="w-3 h-3" /> Meta Graph OK
+          {/* 4. HISTÓRICO DE PUBLICAÇÕES REALIZADAS */}
+          {publishedPosts.length > 0 && (
+            <div className="p-6 rounded-2xl border border-white/10 bg-white/[0.02] space-y-4">
+              <div className="flex items-center justify-between">
+                <div className="flex items-center gap-2">
+                  <CheckCircle2 className="w-5 h-5 text-emerald-400" />
+                  <h4 className="font-bold text-white">Histórico de Publicações Realizadas</h4>
+                  <span className="text-xs px-2.5 py-0.5 rounded-full bg-emerald-500/20 text-emerald-300 font-semibold border border-emerald-500/30">
+                    {publishedPosts.length} posts
                   </span>
-                  {post.results?.facebook?.id && (
-                    <span className="text-[10px] text-blue-400 font-mono">
-                      FB ID: {String(post.results.facebook.id).slice(-6)}
-                    </span>
-                  )}
                 </div>
               </div>
-            ))}
-          </div>
+
+              <div className="grid sm:grid-cols-2 lg:grid-cols-3 gap-3">
+                {publishedPosts.map((post) => (
+                  <div key={post.id} className="p-3.5 rounded-xl border border-white/10 bg-black/30 space-y-2.5 flex flex-col justify-between">
+                    <div className="space-y-2">
+                      {post.image_url && (
+                        <img src={post.image_url} alt="Post" className="w-full h-32 rounded-lg object-cover border border-white/10" />
+                      )}
+                      <div>
+                        <span className="text-[10px] text-slate-400">
+                          Publicado em {new Date(post.created_at).toLocaleString("pt-PT")}
+                        </span>
+                        <p className="text-xs font-bold text-white mt-0.5 line-clamp-1">{post.post_title}</p>
+                        <p className="text-[11px] text-slate-300 line-clamp-2 mt-1">{post.caption}</p>
+                      </div>
+                    </div>
+
+                    <div className="flex items-center justify-between pt-2 border-t border-white/10">
+                      <span className="text-[10px] font-bold text-emerald-400 flex items-center gap-1">
+                        <CheckCircle2 className="w-3 h-3" /> Meta Graph OK
+                      </span>
+                      {post.results?.facebook?.id && (
+                        <span className="text-[10px] text-blue-400 font-mono">
+                          FB ID: {String(post.results.facebook.id).slice(-6)}
+                        </span>
+                      )}
+                    </div>
+                  </div>
+                ))}
+              </div>
+            </div>
+          )}
         </div>
       )}
 
