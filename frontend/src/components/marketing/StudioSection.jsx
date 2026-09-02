@@ -24,6 +24,8 @@ export const StudioSection = ({ products = [], campaigns = [], initialPost = nul
   const [visualBriefing, setVisualBriefing] = useState(initialPost?.visual_briefing || "");
   const [imageUrl, setImageUrl] = useState(initialPost?.image_url || null);
   const [imageVariants, setImageVariants] = useState(initialPost?.image_variants || []);
+  const [carouselSlides, setCarouselSlides] = useState(initialPost?.carousel_slides || []);
+  const [activeSlide, setActiveSlide] = useState(0);
   const [variantType, setVariantType] = useState("A");
 
   // Variant B
@@ -42,6 +44,11 @@ export const StudioSection = ({ products = [], campaigns = [], initialPost = nul
       if (initialPost.hook) setHook(initialPost.hook);
       if (initialPost.caption) setCaption(initialPost.caption);
       if (initialPost.cta) setCta(initialPost.cta);
+      if (initialPost.hashtags) setHashtags(Array.isArray(initialPost.hashtags) ? initialPost.hashtags.join(" ") : initialPost.hashtags);
+      if (initialPost.visual_briefing) setVisualBriefing(initialPost.visual_briefing);
+      if (initialPost.image_url) setImageUrl(initialPost.image_url);
+      if (initialPost.image_variants) setImageVariants(initialPost.image_variants);
+      if (initialPost.carousel_slides) setCarouselSlides(initialPost.carousel_slides);
     }
   }, [initialPost]);
 
@@ -67,6 +74,7 @@ export const StudioSection = ({ products = [], campaigns = [], initialPost = nul
       setVisualBriefing(p.visual_briefing || "");
       setImageUrl(p.image_url || null);
       setImageVariants(p.image_variants || []);
+      setCarouselSlides(p.carousel_slides || []);
       setVariantB(null);
       toast.success("Post e Imagens gerados pelo Studio com sucesso!");
     } catch (e) {
@@ -135,6 +143,7 @@ export const StudioSection = ({ products = [], campaigns = [], initialPost = nul
         cta: postToSend.cta,
         hashtags: hashtags.split(" ").filter(h => h.trim().startsWith("#")),
         visual_briefing: visualBriefing,
+        carousel_slides: carouselSlides,
         image_url: imageUrl,
         image_variants: imageVariants,
         variant_type: isVariantB ? "B" : "A",
@@ -369,6 +378,37 @@ export const StudioSection = ({ products = [], campaigns = [], initialPost = nul
                       <img src={vUrl} alt={`Var ${vIdx + 1}`} className="w-full h-full object-cover" />
                     </div>
                   ))}
+                </div>
+              )}
+
+              {/* Carousel Slides Preview se formato for Carrossel */}
+              {format === "Carrossel" && carouselSlides.length > 0 && (
+                <div className="mt-3 p-3 rounded-xl border border-blue-500/30 bg-blue-500/5 space-y-2">
+                  <div className="flex items-center justify-between text-xs">
+                    <span className="font-bold text-blue-300">
+                      Slide {activeSlide + 1} de {carouselSlides.length}
+                    </span>
+                    <div className="flex items-center gap-1">
+                      <button
+                        onClick={() => setActiveSlide((prev) => Math.max(0, prev - 1))}
+                        disabled={activeSlide === 0}
+                        className="px-2 py-0.5 rounded bg-white/10 hover:bg-white/20 text-white text-xs disabled:opacity-30"
+                      >
+                        ← Anterior
+                      </button>
+                      <button
+                        onClick={() => setActiveSlide((prev) => Math.min(carouselSlides.length - 1, prev + 1))}
+                        disabled={activeSlide === carouselSlides.length - 1}
+                        className="px-2 py-0.5 rounded bg-white/10 hover:bg-white/20 text-white text-xs disabled:opacity-30"
+                      >
+                        Próximo →
+                      </button>
+                    </div>
+                  </div>
+                  <div className="p-2.5 rounded-lg bg-black/40 border border-white/10">
+                    <p className="text-xs font-bold text-white">{carouselSlides[activeSlide]?.title}</p>
+                    <p className="text-xs text-slate-300 mt-1 whitespace-pre-line">{carouselSlides[activeSlide]?.content}</p>
+                  </div>
                 </div>
               )}
 

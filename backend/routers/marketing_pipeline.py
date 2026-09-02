@@ -602,6 +602,205 @@ Gere uma matriz de marketing completa e acionável em formato JSON rigoroso:
     return {"strategy": result, "created_at": now}
 
 
+async def _build_studio_post_from_idea(
+    idea: dict,
+    prod: dict,
+    camp: dict,
+    company: dict,
+    network: str = "Instagram",
+    strategy: str = "Educativo",
+    goal: str = "leads",
+    generate_image: bool = True
+) -> dict:
+    title_raw = idea.get("title", "Post Estratégico")
+    format_type = idea.get("format", "Post")
+    angle = idea.get("angle", strategy)
+    
+    system = "Atue como Redator Executivo e Diretor Criativo para Redes Sociais no Studio COIA."
+    prompt = f"""Empresa: {company.get('name', 'Empresa')} | Setor: {company.get('sector', 'Serviços/Geral')}
+Produto/Serviço: {prod.get('name', 'Oferta')} | Preço: {prod.get('price', 'n/d')} | Proposta: {prod.get('value_prop', '')} | Dor: {prod.get('main_pain', '')}
+Campanha: {camp.get('name', 'Geral')} | Oferta: {camp.get('offer', prod.get('offer', ''))}
+Rede Social: {network}
+Formato Solicitado: {format_type}
+Estratégia: {strategy}
+Ângulo: {angle}
+Objetivo: {goal}
+Ideia da Peça: {title_raw}
+
+Gere uma peça de conteúdo completa, altamente persuasiva e pronta a publicar.
+Se o formato for "Carrossel", forneça a estrutura de 4 a 6 slides detalhados no campo "carousel_slides".
+Retorne em formato JSON:
+{{
+  "title": "{title_raw}",
+  "hook": "Gancho magnético de abertura para a primeira linha ou primeiro slide/segundo",
+  "caption": "Texto completo e estruturado da legenda com quebras de linha e emojis elegantes",
+  "cta": "Chamada para ação direta",
+  "hashtags": ["#marketing", "#negocios", "#portugal"],
+  "visual_briefing": "Descrição visual fotográfica profissional detalhada para geração de imagem (sem texto, iluminação de estúdio)",
+  "carousel_slides": [
+    {{"slide_number": 1, "title": "Capa do Carrossel", "content": "Gancho inicial de alto impacto"}},
+    {{"slide_number": 2, "title": "O Problema Oculto", "content": "Explicação da dor que a maioria ignora"}},
+    {{"slide_number": 3, "title": "A Solução Certa", "content": "Como fazer da forma correta e rápida"}},
+    {{"slide_number": 4, "title": "Próximo Passo", "content": "Chamada para ação e contacto"}}
+  ]
+}}
+"""
+    result = await _safe_ai_json(system, prompt, fallback={
+        "title": title_raw,
+        "hook": f"Sabia que a maioria das empresas comete este erro em {prod.get('name', 'serviços')}?",
+        "caption": f"Na {company.get('name', 'nossa empresa')}, garantimos excelência e rigor em cada detalhe.\n\nEvite prejuízos e fale hoje mesmo com a nossa equipa especializada.",
+        "cta": "Envie mensagem privada para saber mais.",
+        "hashtags": ["#empresas", "#qualidade", "#portugal", "#negocios"],
+        "visual_briefing": f"{prod.get('name', 'Professional')} {company.get('sector', 'Business')} commercial photography, cinematic lighting, ultra-detailed 8k.",
+        "carousel_slides": [
+            {"slide_number": 1, "title": "Atenção", "content": f"O que precisa de saber sobre {prod.get('name', 'este serviço')}"},
+            {"slide_number": 2, "title": "O Desafio", "content": "Como evitar paragens e custos desnecessários"},
+            {"slide_number": 3, "title": "A Solução", "content": "Acompanhamento profissional certificado"},
+            {"slide_number": 4, "title": "Contacto", "content": "Peça a sua proposta em 24h"}
+        ]
+    })
+    
+    image_variants = []
+    if generate_image:
+        try:
+            brief = result.get("visual_briefing") or f"{prod.get('name', 'Professional')} {company.get('sector', 'Business')} commercial photography 8k"
+            topic_q = result.get("title") or prod.get("name") or company.get("sector")
+            raw_imgs = await generate_marketing_images(brief, number_of_images=2, topic_query=topic_q)
+            for img_data in raw_imgs:
+                if isinstance(img_data, bytes) and len(img_data) > 500:
+                    fname = f"studio_img_{uuid.uuid4().hex[:12]}.png"
+                    (UPLOAD_DIR / fname).write_bytes(img_data)
+                    image_variants.append(f"/uploads/{fname}")
+                elif isinstance(img_data, str) and img_data.startswith(("http", "/")):
+                    image_variants.append(img_data)
+        except Exception as e:
+            logger.warning(f"Erro ao gerar imagem para lote: {e}")
+            
+    return {
+        "product_id": prod.get("id"),
+        "campaign_id": camp.get("id"),
+        "title": result.get("title") or title_raw,
+        "format": format_type,
+        "network": network,
+        "strategy": strategy,
+        "angle": angle,
+        "goal": goal,
+        "hook": result.get("hook"),
+        "caption": result.get("caption"),
+        "cta": result.get("cta"),
+        "hashtags": result.get("hashtags", []),
+        "visual_briefing": result.get("visual_briefing"),
+        "carousel_slides": result.get("carousel_slides", []) if format_type == "Carrossel" else [],
+        "image_url": image_variants[0] if image_variants else None,
+        "image_variants": image_variants,
+        "status": "READY",
+        "variant_type": "A"
+    }
+
+
+@router.post("/marketing/creator/batch-create-posts")
+async def batch_create_posts_from_strategy(payload: Dict[str, Any], user: dict = Depends(premium_user)):
+    """Gera em lote todos os posts e imagens das ideias sugeridas pelo Criador de Marketing."""
+    uid = user["id"]
+    company = await resolve_company(uid) or {}
+    
+    product_id = payload.get("product_id")
+    campaign_id = payload.get("campaign_id")
+    objective = payload.get("objective", "leads")
+    strategy = payload.get("strategy", "Educativo")
+    network = payload.get("network", "Instagram")
+    content_ideas = payload.get("content_ideas", [])
+    
+    if not content_ideas:
+        raise HTTPException(status_code=400, detail="Nenhuma ideia fornecida para criação em lote.")
+        
+    prod = {}
+    if product_id and product_id != "none":
+        try:
+            p_doc = await db.marketing_products.find_one({"_id": ObjectId(product_id), "user_id": uid})
+            if p_doc:
+                prod = _serialize(p_doc)
+        except Exception:
+            pass
+            
+    camp = {}
+    if campaign_id and campaign_id != "none":
+        try:
+            c_doc = await db.marketing_campaigns.find_one({"_id": ObjectId(campaign_id), "user_id": uid})
+            if c_doc:
+                camp = _serialize(c_doc)
+        except Exception:
+            pass
+            
+    tasks = [
+        _build_studio_post_from_idea(
+            idea=idea,
+            prod=prod,
+            camp=camp,
+            company=company,
+            network=network,
+            strategy=strategy,
+            goal=objective,
+            generate_image=True
+        )
+        for idea in content_ideas[:10]
+    ]
+    
+    results = await asyncio.gather(*tasks, return_exceptions=True)
+    valid_posts = [r for r in results if isinstance(r, dict) and r.get("title")]
+    
+    return {"posts": valid_posts, "count": len(valid_posts)}
+
+
+@router.post("/marketing/creator/batch-approve-to-pool")
+async def batch_approve_posts_to_pool(payload: Dict[str, Any], user: dict = Depends(premium_user)):
+    """Insere em lote todos os posts aprovados diretamente no Content Pool como READY."""
+    uid = user["id"]
+    cid = await active_company_id(uid)
+    posts = payload.get("posts", [])
+    
+    if not posts:
+        raise HTTPException(status_code=400, detail="Nenhum post fornecido para aprovação.")
+        
+    now = datetime.now(timezone.utc).isoformat()
+    inserted_ids = []
+    
+    for p in posts:
+        doc = {
+            "user_id": uid,
+            "company_id": cid,
+            "product_id": p.get("product_id"),
+            "campaign_id": p.get("campaign_id"),
+            "title": p.get("title", "Post Aprovado"),
+            "format": p.get("format", "Post"),
+            "network": p.get("network", "Instagram"),
+            "strategy": p.get("strategy", "Educativo"),
+            "goal": p.get("goal", "leads"),
+            "hook": p.get("hook", ""),
+            "caption": p.get("caption", ""),
+            "cta": p.get("cta", ""),
+            "hashtags": p.get("hashtags", []),
+            "visual_briefing": p.get("visual_briefing", ""),
+            "carousel_slides": p.get("carousel_slides", []),
+            "image_url": p.get("image_url"),
+            "image_variants": p.get("image_variants", []),
+            "variant_type": p.get("variant_type", "A"),
+            "status": "READY",
+            "quality_score": 92,
+            "viral_score": 88,
+            "created_at": now,
+            "updated_at": now
+        }
+        res = await db.marketing_content_pool.insert_one(doc)
+        inserted_ids.append(str(res.inserted_id))
+        
+    return {
+        "success": True,
+        "inserted_count": len(inserted_ids),
+        "message": f"{len(inserted_ids)} criativos aprovados e adicionados com sucesso ao Content Pool!"
+    }
+
+
 # ============================================================================
 # 4. STUDIO & NOVO POST
 # ============================================================================

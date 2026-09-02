@@ -141,13 +141,23 @@ export default function Marketing() {
   };
 
   const handleSendIdeaToStudio = (idea, productId, campaignId, strategy, goal) => {
+    const prodId = idea.product_id || (productId !== "none" ? productId : null);
+    const campId = idea.campaign_id || (campaignId !== "none" ? campaignId : null);
     setStudioInitialPost({
-      product_id: productId !== "none" ? productId : null,
-      campaign_id: campaignId !== "none" ? campaignId : null,
+      product_id: prodId,
+      campaign_id: campId,
       title: idea.title,
       format: idea.format || "Post",
-      strategy: strategy || "Educativo",
-      goal: goal || "leads"
+      strategy: idea.strategy || strategy || "Educativo",
+      goal: idea.goal || goal || "leads",
+      hook: idea.hook || "",
+      caption: idea.caption || "",
+      cta: idea.cta || "",
+      hashtags: idea.hashtags || [],
+      visual_briefing: idea.visual_briefing || "",
+      image_url: idea.image_url || null,
+      image_variants: idea.image_variants || [],
+      carousel_slides: idea.carousel_slides || []
     });
     setActiveTab("studio");
   };
@@ -402,6 +412,10 @@ export default function Marketing() {
               products={products}
               campaigns={campaigns}
               onSendIdeaToStudio={handleSendIdeaToStudio}
+              onBatchApproveSuccess={() => {
+                loadAllData(true);
+                setActiveTab("pool");
+              }}
               api={api}
             />
           )}
