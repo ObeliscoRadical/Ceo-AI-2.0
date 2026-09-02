@@ -20,8 +20,6 @@ _RUNTIME_TIKTOK_CONFIG = {}
 
 TIKTOK_SCOPES = [
     "user.info.basic",
-    "user.info.profile",
-    "user.info.stats",
     "video.publish",
     "video.upload"
 ]
