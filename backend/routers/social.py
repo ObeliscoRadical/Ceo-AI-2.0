@@ -1150,8 +1150,7 @@ async def _store_public_image(uid: str, cid: Optional[str], data: bytes, ct: str
     await db.social_media.insert_one({"_id": mid, "user_id": uid, "company_id": cid,
                                       "data": base64.b64encode(data).decode(), "content_type": ct,
                                       "created_at": datetime.now(timezone.utc).isoformat()})
-    backend_port = os.environ.get("PORT", "8001")
-    return f"http://localhost:{backend_port}/api/public/media/{mid}"
+    return f"{_base()}/api/public/media/{mid}"
 
 
 @router.get("/public/media/{mid}")
@@ -1554,6 +1553,29 @@ async def _publish_core(uid: str, cid: Optional[str], payload: dict) -> dict:
         raise HTTPException(400, "A Página Meta ligada não tem as tasks necessárias para publicar (CREATE_CONTENT/MANAGE).")
     post_id = payload.get("post_id")
     post_meta = payload.get("post_meta") or await _marketing_post_meta(uid, cid, post_id)
+    if image_url and "/uploads/" in str(image_url):
+        fname = str(image_url).split("/uploads/")[-1]
+        fpath = UPLOAD_DIR / fname
+        if not fpath.exists():
+            doc = await db.uploaded_files.find_one({"filename": fname})
+            if doc and doc.get("data"):
+                raw = base64.b64decode(doc["data"])
+                try:
+                    fpath.write_bytes(raw)
+                except Exception:
+                    pass
+            else:
+                # Regenerar imagem contextual com IA de alta fidelidade
+                prompt = payload.get("image_prompt") or caption[:220] or "Executivo profissional marketing digital inteligência artificial"
+                img = await generate_marketing_image(prompt)
+                logo = await db.brand_assets.find_one({"user_id": uid, "company_id": cid})
+                if logo and logo.get("logo_data"):
+                    try:
+                        img = composite_logo(img, base64.b64decode(logo["logo_data"]))
+                    except Exception as e:
+                        logger.error(f"logo composite falhou: {e}")
+                image_url = await _store_public_image(uid, cid, img)
+
     if not image_url and want_img and (do_ig or do_fb):
         prompt = payload.get("image_prompt") or caption[:220] or "Conteúdo de marketing profissional"
         img = await generate_marketing_image(prompt)
