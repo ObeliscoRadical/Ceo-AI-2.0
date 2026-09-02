@@ -268,19 +268,8 @@ def _epoch_iso(value) -> Optional[str]:
 
 async def _graph_req(method: str, url: str, params: dict, token: str) -> dict:
     req_params = {**params, "access_token": token}
-    proof = _proof(token)
-    if proof:
-        req_params["appsecret_proof"] = proof
     async with httpx.AsyncClient(timeout=90) as client:
         r = await client.request(method, url, params=req_params)
-        if r.status_code != 200:
-            try:
-                err_data = r.json()
-                if "appsecret_proof" in str(err_data.get("error", {}).get("message", "")):
-                    req_params.pop("appsecret_proof", None)
-                    r = await client.request(method, url, params=req_params)
-            except Exception:
-                pass
     try:
         data = r.json()
     except Exception:
