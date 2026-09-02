@@ -1536,6 +1536,10 @@ async def _publish_core(uid: str, cid: Optional[str], payload: dict) -> dict:
         raise HTTPException(400, "As redes ainda não estão ligadas.")
     caption = payload.get("caption") or ""
     image_url = payload.get("image_url")
+    if image_url and str(image_url).startswith("/"):
+        base_url = _base()
+        image_url = f"{base_url}{image_url}"
+        
     want_img = payload.get("generate_image", True)
     do_ig = payload.get("instagram", True)
     do_fb = payload.get("facebook", True)
@@ -1628,11 +1632,170 @@ async def social_jobs(user: dict = Depends(premium_user)):
     cid = await active_company_id(user["id"])
     await _migrate_legacy_jobs(user["id"], cid)
     jobs = await db.social_jobs.find({"user_id": user["id"], "company_id": cid}).sort("run_at", 1).to_list(100)
-    out = [{"id": str(j["_id"]), "run_at": j.get("run_at"), "status": j.get("status"),
-            "caption": ((j.get("payload") or {}).get("caption") or "")[:80],
-            "post_id": (j.get("payload") or {}).get("post_id"),
-            "error": j.get("error")} for j in jobs]
+    out = []
+    for j in jobs:
+        payload = j.get("payload") or {}
+        out.append({
+            "id": str(j["_id"]),
+            "run_at": j.get("run_at") or j.get("scheduled_at"),
+            "status": j.get("status", "queued"),
+            "title": j.get("title") or payload.get("title") or "Publicação Programada",
+            "caption": j.get("caption") or payload.get("caption") or "",
+            "image_url": j.get("image_url") or payload.get("image_url"),
+            "platforms": j.get("platforms") or (["instagram"] if payload.get("instagram") else []) + (["facebook"] if payload.get("facebook") else []),
+            "post_id": j.get("post_id") or j.get("content_id") or payload.get("post_id"),
+            "error": j.get("error"),
+            "result": j.get("result"),
+            "published_at": j.get("published_at"),
+            "created_at": j.get("created_at"),
+        })
     return {"jobs": out}
+
+
+@router.post("/social/jobs/{jid}/publish-now")
+async def publish_job_now(jid: str, user: dict = Depends(premium_user)):
+    """Publica imediatamente um post agendado sem esperar pela hora programada."""
+    cid = await active_company_id(user["id"])
+    job = await db.social_jobs.find_one({"_id": jid, "user_id": user["id"], "company_id": cid})
+    if not job:
+        # Tentar converter para ObjectId se necessário
+        from bson import ObjectId
+        try:
+            job = await db.social_jobs.find_one({"_id": ObjectId(jid), "user_id": user["id"], "company_id": cid})
+        except Exception:
+            pass
+    if not job:
+        raise HTTPException(404, "Agendamento não encontrado.")
+    
+    payload = job.get("payload") or {}
+    if not payload:
+        payload = {
+            "caption": job.get("caption") or job.get("title") or "",
+            "image_url": job.get("image_url"),
+            "post_id": job.get("post_id") or job.get("content_id"),
+            "instagram": "instagram" in [p.lower() for p in (job.get("platforms") or ["instagram", "facebook"])],
+            "facebook": "facebook" in [p.lower() for p in (job.get("platforms") or ["instagram", "facebook"])],
+        }
+    
+    if payload.get("image_url") and payload["image_url"].startswith("/"):
+        payload["image_url"] = f"{_base()}{payload['image_url']}"
+        
+    res = await _publish_core(user["id"], cid, payload)
+    now_iso = datetime.now(timezone.utc).isoformat()
+    await db.social_jobs.update_one(
+        {"_id": job["_id"]},
+        {"$set": {"status": "published", "result": res, "published_at": now_iso}}
+    )
+    return {"ok": True, "message": "Publicação disparada com sucesso!", "results": res}
+
+
+class UpdateJobIn(BaseModel):
+    caption: Optional[str] = None
+    image_url: Optional[str] = None
+    run_at: Optional[str] = None
+    title: Optional[str] = None
+
+
+@router.put("/social/jobs/{jid}")
+async def update_job(jid: str, inp: UpdateJobIn, user: dict = Depends(premium_user)):
+    """Permite editar a legenda, imagem, título ou horário de um agendamento."""
+    cid = await active_company_id(user["id"])
+    job = await db.social_jobs.find_one({"_id": jid, "user_id": user["id"], "company_id": cid})
+    if not job:
+        from bson import ObjectId
+        try:
+            job = await db.social_jobs.find_one({"_id": ObjectId(jid), "user_id": user["id"], "company_id": cid})
+        except Exception:
+            pass
+    if not job:
+        raise HTTPException(404, "Agendamento não encontrado.")
+    
+    upd = {"updated_at": datetime.now(timezone.utc).isoformat()}
+    if inp.caption is not None:
+        upd["caption"] = inp.caption
+        if "payload" in job and isinstance(job["payload"], dict):
+            upd["payload.caption"] = inp.caption
+    if inp.image_url is not None:
+        upd["image_url"] = inp.image_url
+        if "payload" in job and isinstance(job["payload"], dict):
+            upd["payload.image_url"] = inp.image_url
+    if inp.title is not None:
+        upd["title"] = inp.title
+        if "payload" in job and isinstance(job["payload"], dict):
+            upd["payload.title"] = inp.title
+    if inp.run_at is not None:
+        upd["run_at"] = inp.run_at
+        
+    await db.social_jobs.update_one({"_id": job["_id"]}, {"$set": upd})
+    return {"ok": True, "message": "Agendamento atualizado com sucesso!"}
+
+
+@router.get("/social/published-history")
+async def get_published_history(user: dict = Depends(premium_user)):
+    """Retorna o histórico completo de publicações realizadas com imagens e links."""
+    cid = await active_company_id(user["id"])
+    posts = await db.social_posts.find({"user_id": user["id"], "company_id": cid}).sort("created_at", -1).to_list(50)
+    out = []
+    for p in posts:
+        out.append({
+            "id": str(p["_id"]),
+            "post_title": p.get("post_title") or "Publicação",
+            "caption": p.get("caption") or "",
+            "image_url": p.get("image_url"),
+            "format": p.get("format") or "Post",
+            "theme": p.get("theme"),
+            "results": p.get("results") or {},
+            "created_at": p.get("created_at"),
+            "metrics": p.get("metrics") or {},
+        })
+    return {"posts": out}
+
+
+@router.get("/social/accounts")
+async def get_available_accounts(user: dict = Depends(premium_user)):
+    """Lista todas as Páginas e contas de Instagram disponíveis no Token Meta ativo."""
+    cid = await active_company_id(user["id"])
+    conn = await _find_connection(user["id"], cid)
+    if not conn or not (conn.get("user_token") or conn.get("page_token")):
+        return {"pages": [], "active_page": None}
+    
+    token = conn.get("user_token") or conn.get("page_token")
+    pages = []
+    async with httpx.AsyncClient(timeout=20) as client:
+        try:
+            r = await client.get(
+                f"https://graph.facebook.com/{_graph_ver()}/me/accounts",
+                params={"access_token": token, "fields": "id,name,access_token,tasks,instagram_business_account"}
+            )
+            if r.status_code == 200:
+                data = r.json().get("data", [])
+                for p in data:
+                    item = {
+                        "page_id": p.get("id"),
+                        "page_name": p.get("name"),
+                        "ig_user_id": (p.get("instagram_business_account") or {}).get("id"),
+                        "ig_username": None
+                    }
+                    if item["ig_user_id"]:
+                        try:
+                            ig_r = await client.get(
+                                f"https://graph.facebook.com/{_graph_ver()}/{item['ig_user_id']}",
+                                params={"access_token": p.get("access_token") or token, "fields": "username,name"}
+                            )
+                            if ig_r.status_code == 200:
+                                item["ig_username"] = ig_r.json().get("username")
+                        except Exception:
+                            pass
+                    pages.append(item)
+        except Exception as e:
+            logger.warning(f"Erro ao listar me/accounts: {e}")
+            
+    return {
+        "pages": pages,
+        "active_page_id": conn.get("page_id"),
+        "active_page_name": conn.get("page_name"),
+        "active_ig_username": conn.get("ig_username")
+    }
 
 
 @router.get("/social/media-agent")
@@ -1657,10 +1820,17 @@ async def social_metrics_refresh(user: dict = Depends(premium_user)):
 async def del_job(jid: str, user: dict = Depends(premium_user)):
     cid = await active_company_id(user["id"])
     job = await db.social_jobs.find_one({"_id": jid, "user_id": user["id"], "company_id": cid})
-    await db.social_jobs.delete_one({"_id": jid, "user_id": user["id"], "company_id": cid})
-    post_id = ((job or {}).get("payload") or {}).get("post_id")
-    if post_id:
-        await _sync_marketing_post(user["id"], cid, post_id, "approved")
+    if not job:
+        from bson import ObjectId
+        try:
+            job = await db.social_jobs.find_one({"_id": ObjectId(jid), "user_id": user["id"], "company_id": cid})
+        except Exception:
+            pass
+    if job:
+        await db.social_jobs.delete_one({"_id": job["_id"]})
+        post_id = ((job or {}).get("payload") or {}).get("post_id") or job.get("post_id")
+        if post_id:
+            await _sync_marketing_post(user["id"], cid, post_id, "approved")
     return {"ok": True}
 
 
@@ -1673,17 +1843,18 @@ async def reschedule_job(jid: str, inp: RescheduleIn, user: dict = Depends(premi
     cid = await active_company_id(user["id"])
     job = await db.social_jobs.find_one({"_id": jid, "user_id": user["id"], "company_id": cid})
     if not job:
+        from bson import ObjectId
+        try:
+            job = await db.social_jobs.find_one({"_id": ObjectId(jid), "user_id": user["id"], "company_id": cid})
+        except Exception:
+            pass
+    if not job:
         raise HTTPException(404, "Agendamento não encontrado.")
-    if job.get("status") not in {"queued", "processing"}:
-        raise HTTPException(400, "Só é possível reagendar itens ainda não publicados.")
     await db.social_jobs.update_one(
-        {"_id": jid, "user_id": user["id"], "company_id": cid},
+        {"_id": job["_id"]},
         {"$set": {"run_at": inp.run_at, "updated_at": datetime.now(timezone.utc).isoformat()}},
     )
-    post_id = ((job.get("payload") or {}).get("post_id"))
-    if post_id:
-        await _sync_marketing_post(user["id"], cid, post_id, "scheduled", scheduled_at=inp.run_at)
-    return {"ok": True, "id": jid, "run_at": inp.run_at}
+    return {"ok": True, "id": str(job["_id"]), "run_at": inp.run_at}
 
 
 # ---------------------------------------------------------------- logo da empresa (sobreposto nas imagens)
@@ -1726,23 +1897,42 @@ async def delete_logo(user: dict = Depends(premium_user)):
 # ---------------------------------------------------------------- worker de agendamento
 async def run_due_social_jobs():
     now = datetime.now(timezone.utc)
-    async for job in db.social_jobs.find({"status": "queued"}):
+    async for job in db.social_jobs.find({"status": {"$in": ["queued", "QUEUED"]}}):
         try:
-            ra = datetime.fromisoformat(job["run_at"].replace("Z", "+00:00"))
+            ra_str = job.get("run_at") or job.get("scheduled_at")
+            if not ra_str:
+                continue
+            ra = datetime.fromisoformat(str(ra_str).replace("Z", "+00:00"))
             if ra.tzinfo is None:
                 ra = ra.replace(tzinfo=timezone.utc)
             if ra > now:
                 continue
             claimed = await db.social_jobs.find_one_and_update(
-                {"_id": job["_id"], "status": "queued"}, {"$set": {"status": "processing"}})
+                {"_id": job["_id"], "status": {"$in": ["queued", "QUEUED"]}},
+                {"$set": {"status": "processing"}}
+            )
             if not claimed:
                 continue
             cid = job.get("company_id") or await active_company_id(job["user_id"])
-            res = await _publish_core(job["user_id"], cid, job["payload"])
+            
+            payload = job.get("payload") or {}
+            if not payload:
+                payload = {
+                    "caption": job.get("caption") or job.get("title") or "",
+                    "image_url": job.get("image_url"),
+                    "post_id": job.get("post_id") or job.get("content_id"),
+                    "instagram": "instagram" in [p.lower() for p in (job.get("platforms") or ["instagram", "facebook"])],
+                    "facebook": "facebook" in [p.lower() for p in (job.get("platforms") or ["instagram", "facebook"])],
+                }
+            
+            if payload.get("image_url") and payload["image_url"].startswith("/"):
+                payload["image_url"] = f"{_base()}{payload['image_url']}"
+            
+            res = await _publish_core(job["user_id"], cid, payload)
             published_at = datetime.now(timezone.utc).isoformat()
             await db.social_jobs.update_one({"_id": job["_id"]}, {"$set": {
                 "status": "published", "result": res, "published_at": published_at}})
-            post_id = ((job or {}).get("payload") or {}).get("post_id")
+            post_id = payload.get("post_id")
             if post_id:
                 await _sync_marketing_post(job["user_id"], cid, post_id, "scheduled", scheduled_at=job.get("run_at"), published_at=published_at)
         except Exception as e:

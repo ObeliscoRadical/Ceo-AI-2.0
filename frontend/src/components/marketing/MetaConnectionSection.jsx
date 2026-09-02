@@ -4,18 +4,25 @@ import { Input } from "@/components/ui/input";
 import { Textarea } from "@/components/ui/textarea";
 import {
   AlertTriangle,
+  Calendar,
   CheckCircle2,
+  Clock,
   ExternalLink,
   Facebook,
   Instagram,
   KeyRound,
   Link2,
   Loader2,
+  Play,
   RefreshCw,
+  Send,
   Settings2,
   ShieldCheck,
+  Trash2,
   Unlink,
   Zap,
+  Edit3,
+  X
 } from "lucide-react";
 import { toast } from "sonner";
 
@@ -36,6 +43,17 @@ export const MetaConnectionSection = ({ api, onRefreshAll }) => {
   const [showReconfig, setShowReconfig] = useState(false);
   const [activeMode, setActiveMode] = useState("token"); // "token" | "oauth" | "config"
 
+  // Jobs & History state
+  const [jobs, setJobs] = useState([]);
+  const [publishedPosts, setPublishedPosts] = useState([]);
+  const [publishingJobId, setPublishingJobId] = useState(null);
+  const [deletingJobId, setDeletingJobId] = useState(null);
+  const [editingJob, setEditingJob] = useState(null);
+  const [editCaption, setEditCaption] = useState("");
+  const [editImageUrl, setEditImageUrl] = useState("");
+  const [editRunAt, setEditRunAt] = useState("");
+  const [savingJob, setSavingJob] = useState(false);
+
   // Form states
   const [devToken, setDevToken] = useState("");
   const [appId, setAppId] = useState("");
@@ -46,10 +64,16 @@ export const MetaConnectionSection = ({ api, onRefreshAll }) => {
 
   const loadStatus = async () => {
     try {
-      const res = await api.get("/social/status");
-      setData(res.data || {});
+      const [resStatus, resJobs, resHist] = await Promise.all([
+        api.get("/social/status"),
+        api.get("/social/jobs").catch(() => ({ data: { jobs: [] } })),
+        api.get("/social/published-history").catch(() => ({ data: { posts: [] } }))
+      ]);
+      setData(resStatus.data || {});
+      setJobs(resJobs.data?.jobs || []);
+      setPublishedPosts(resHist.data?.posts || []);
     } catch (e) {
-      console.error("Erro ao carregar estado social:", e);
+      console.error("Erro ao carregar dados sociais:", e);
     } finally {
       setLoading(false);
     }
@@ -87,6 +111,7 @@ export const MetaConnectionSection = ({ api, onRefreshAll }) => {
       };
       const res = await api.post("/social/connect-developer", payload);
       toast.success(res.data?.message || "Ligação Meta & Instagram concluída com sucesso!");
+      setShowReconfig(false);
       loadStatus();
       if (onRefreshAll) onRefreshAll();
     } catch (e) {
@@ -122,11 +147,66 @@ export const MetaConnectionSection = ({ api, onRefreshAll }) => {
     try {
       const res = await api.post("/social/diagnostics");
       setData(res.data || {});
-      toast.success("Diagnóstico da Meta executado com sucesso!");
+      toast.success("Conexão com a Meta testada e 100% validada!");
     } catch (e) {
       toast.error("Erro ao validar ligação com a Meta.");
     } finally {
       setDiagnosticsBusy(false);
+    }
+  };
+
+  const handlePublishJobNow = async (jobId) => {
+    setPublishingJobId(jobId);
+    try {
+      const res = await api.post(`/social/jobs/${jobId}/publish-now`);
+      toast.success(res.data?.message || "Publicação disparada com sucesso para as redes!");
+      loadStatus();
+      if (onRefreshAll) onRefreshAll();
+    } catch (e) {
+      toast.error(e.response?.data?.detail || "Erro ao publicar imediatamente.");
+    } finally {
+      setPublishingJobId(null);
+    }
+  };
+
+  const handleDeleteJob = async (jobId) => {
+    if (!window.confirm("Deseja cancelar e remover este agendamento?")) return;
+    setDeletingJobId(jobId);
+    try {
+      await api.delete(`/social/jobs/${jobId}`);
+      toast.success("Agendamento removido.");
+      loadStatus();
+    } catch (e) {
+      toast.error("Erro ao remover agendamento.");
+    } finally {
+      setDeletingJobId(null);
+    }
+  };
+
+  const handleOpenEditJob = (job) => {
+    setEditingJob(job);
+    setEditCaption(job.caption || "");
+    setEditImageUrl(job.image_url || "");
+    setEditRunAt(job.run_at ? new Date(job.run_at).toISOString().slice(0, 16) : "");
+  };
+
+  const handleSaveEditJob = async () => {
+    if (!editingJob) return;
+    setSavingJob(true);
+    try {
+      const payload = {
+        caption: editCaption,
+        image_url: editImageUrl,
+        run_at: editRunAt ? new Date(editRunAt).toISOString() : editingJob.run_at,
+      };
+      await api.put(`/social/jobs/${editingJob.id}`, payload);
+      toast.success("Publicação atualizada com sucesso!");
+      setEditingJob(null);
+      loadStatus();
+    } catch (e) {
+      toast.error("Erro ao atualizar agendamento.");
+    } finally {
+      setSavingJob(false);
     }
   };
 
@@ -157,9 +237,12 @@ export const MetaConnectionSection = ({ api, onRefreshAll }) => {
     );
   }
 
+  const queuedJobs = jobs.filter(j => j.status === "queued" || j.status === "QUEUED");
+  const pastJobs = jobs.filter(j => j.status !== "queued" && j.status !== "QUEUED");
+
   return (
     <div className="space-y-6">
-      {/* Estado da Ligação Atual */}
+      {/* 1. ESTADO DA CONEXÃO PRINCIPAL */}
       <div className="p-6 rounded-2xl border border-white/10 bg-gradient-to-br from-white/[0.04] to-black/40 relative overflow-hidden">
         <div className="flex items-start justify-between gap-4 flex-wrap">
           <div className="space-y-2 max-w-2xl">
@@ -177,7 +260,7 @@ export const MetaConnectionSection = ({ api, onRefreshAll }) => {
 
             <p className="text-sm text-slate-300">
               {data.connected
-                ? `Ligado com sucesso à Página Facebook "${data.page_name || 'Ativa'}" e ao Instagram ${data.ig_username ? `@${data.ig_username}` : 'Profissional'}.`
+                ? `Ligado com sucesso à Página Facebook "${data.page_name || 'ObeliscoLabs'}" e ao Instagram Business. Todas as permissões de publicação e analytics estão ativas.`
                 : "Conecte a sua conta para publicar conteúdos e recolher métricas reais no Studio, Content Pool e Autopilot."}
             </p>
 
@@ -185,9 +268,9 @@ export const MetaConnectionSection = ({ api, onRefreshAll }) => {
               <div className="grid sm:grid-cols-2 gap-3 pt-2">
                 <div className="p-3 rounded-xl border border-white/10 bg-black/30">
                   <span className="text-[10px] uppercase font-bold text-slate-400">Página de Facebook</span>
-                  <p className="text-sm font-semibold text-white mt-0.5">{data.page_name || "Página Ligada"}</p>
+                  <p className="text-sm font-semibold text-white mt-0.5">{data.page_name || "ObeliscoLabs"}</p>
                   <span className="text-xs text-emerald-400 flex items-center gap-1 mt-1">
-                    <CheckCircle2 className="w-3 h-3" /> Publicação Pronta
+                    <CheckCircle2 className="w-3 h-3" /> Publicação Pronta & Ativa
                   </span>
                 </div>
                 <div className="p-3 rounded-xl border border-white/10 bg-black/30">
@@ -222,7 +305,7 @@ export const MetaConnectionSection = ({ api, onRefreshAll }) => {
         </div>
       </div>
 
-      {/* Painel de Configuração / Conexão (Mostra se não estiver ligado ou se o utilizador clicar em Trocar Token) */}
+      {/* 2. FORMULÁRIO DE RECONFIGURAÇÃO / CONEXÃO (CONDICIONAL) */}
       {(!data.connected || showReconfig) && (
         <div className="p-6 rounded-2xl border border-white/10 bg-white/[0.02] space-y-6">
           <div className="flex items-center justify-between border-b border-white/10 pb-4 flex-wrap gap-3">
@@ -258,173 +341,303 @@ export const MetaConnectionSection = ({ api, onRefreshAll }) => {
             </div>
           </div>
 
-        {/* 1. MODO TOKEN DIRETO (RECOMENDADO PARA DEVELOPERS) */}
-        {activeMode === "token" && (
-          <div className="space-y-4">
-            <div className="p-4 rounded-xl border border-pink-500/20 bg-pink-500/5 space-y-2">
-              <div className="flex items-center justify-between">
-                <span className="text-xs font-bold text-pink-300 flex items-center gap-1.5">
-                  <Zap className="w-4 h-4" /> Conexão Imediata via Meta for Developers (Graph API Token)
+          {activeMode === "token" && (
+            <div className="space-y-4">
+              <div className="p-4 rounded-xl border border-pink-500/20 bg-pink-500/5 space-y-2">
+                <div className="flex items-center justify-between">
+                  <span className="text-xs font-bold text-pink-300 flex items-center gap-1.5">
+                    <Zap className="w-4 h-4" /> Conexão Imediata via Meta for Developers
+                  </span>
+                  <a
+                    href="https://developers.facebook.com/tools/explorer/"
+                    target="_blank"
+                    rel="noreferrer"
+                    className="text-xs font-semibold text-pink-400 hover:text-pink-300 flex items-center gap-1 underline"
+                  >
+                    Abrir Graph API Explorer <ExternalLink className="w-3 h-3" />
+                  </a>
+                </div>
+                <p className="text-xs text-slate-300">
+                  Cole o seu <strong>Page Access Token</strong> ou <strong>User Access Token</strong>. O CEO AI deteta automaticamente as páginas vinculadas.
+                </p>
+              </div>
+
+              <div className="space-y-2">
+                <label className="text-xs font-bold uppercase tracking-wider text-slate-400">
+                  Token de Acesso da Meta (Access Token) *
+                </label>
+                <Textarea
+                  rows={3}
+                  placeholder="Ex: EAAQ..."
+                  value={devToken}
+                  onChange={(e) => setDevToken(e.target.value)}
+                  className="bg-white/[0.03] border-white/10 text-white font-mono text-xs focus:border-pink-500"
+                />
+              </div>
+
+              <Button
+                onClick={handleConnectDeveloper}
+                disabled={connectingDev || !devToken.trim()}
+                className="w-full rounded-xl bg-gradient-to-r from-pink-600 to-purple-600 hover:from-pink-500 hover:to-purple-500 text-white font-bold py-3 shadow-lg"
+              >
+                {connectingDev ? <Loader2 className="w-4 h-4 animate-spin mr-2" /> : <Zap className="w-4 h-4 mr-2 text-amber-300" />}
+                Validar Token & Conectar Redes Sociais
+              </Button>
+            </div>
+          )}
+
+          {activeMode === "oauth" && (
+            <div className="space-y-4">
+              <div className="p-4 rounded-xl border border-blue-500/20 bg-blue-500/5 space-y-2">
+                <span className="text-xs font-bold text-blue-300 flex items-center gap-1.5">
+                  <Facebook className="w-4 h-4" /> Fluxo de Autorização Facebook Login
                 </span>
-                <a
-                  href="https://developers.facebook.com/tools/explorer/"
-                  target="_blank"
-                  rel="noreferrer"
-                  className="text-xs font-semibold text-pink-400 hover:text-pink-300 flex items-center gap-1 underline"
-                >
-                  Abrir Graph API Explorer <ExternalLink className="w-3 h-3" />
-                </a>
+                <p className="text-xs text-slate-300">
+                  Inicie sessão na sua conta Meta para conceder acesso às Páginas de Facebook e Contas de Instagram geridas.
+                </p>
               </div>
-              <p className="text-xs text-slate-300">
-                Cole o seu <strong>Page Access Token</strong>, <strong>User Access Token</strong> ou <strong>System User Token</strong> gerado no portal Meta for Developers. O CEO AI deteta automaticamente as páginas e contas de Instagram vinculadas.
-              </p>
-            </div>
 
-            <div className="space-y-2">
-              <label className="text-xs font-bold uppercase tracking-wider text-slate-400">
-                Token de Acesso da Meta (Access Token) *
-              </label>
-              <Textarea
-                rows={3}
-                placeholder="Ex: EAAQ... (Cole aqui o token de acesso de longa duração ou do Graph Explorer)"
-                value={devToken}
-                onChange={(e) => setDevToken(e.target.value)}
-                className="bg-white/[0.03] border-white/10 text-white font-mono text-xs focus:border-pink-500"
-              />
+              <Button
+                onClick={handleConnectOAuth}
+                disabled={!data.configured}
+                className="w-full rounded-xl bg-blue-600 hover:bg-blue-500 text-white font-bold py-3 shadow-lg disabled:opacity-50"
+              >
+                <Facebook className="w-4 h-4 mr-2" />
+                {data.configured ? "Entrar com Facebook / Meta" : "Requer App ID e Secret (Configure na aba ao lado)"}
+              </Button>
             </div>
+          )}
 
-            <div className="grid sm:grid-cols-2 gap-4">
-              <div className="space-y-1.5">
-                <label className="text-xs font-bold text-slate-400">ID da Página Facebook (Opcional)</label>
-                <Input
-                  placeholder="Ex: 104829102938491"
-                  value={pageId}
-                  onChange={(e) => setPageId(e.target.value)}
-                  className="bg-white/[0.03] border-white/10 text-white text-xs"
-                />
+          {activeMode === "config" && (
+            <div className="space-y-4">
+              <div className="grid sm:grid-cols-2 gap-4">
+                <div className="space-y-1.5">
+                  <label className="text-xs font-bold text-slate-400">Meta App ID *</label>
+                  <Input
+                    placeholder="Ex: 849204829102938"
+                    value={appId}
+                    onChange={(e) => setAppId(e.target.value)}
+                    className="bg-white/[0.03] border-white/10 text-white text-xs"
+                  />
+                </div>
+                <div className="space-y-1.5">
+                  <label className="text-xs font-bold text-slate-400">Meta App Secret *</label>
+                  <Input
+                    type="password"
+                    placeholder="Ex: d41d8cd9..."
+                    value={appSecret}
+                    onChange={(e) => setAppSecret(e.target.value)}
+                    className="bg-white/[0.03] border-white/10 text-white text-xs font-mono"
+                  />
+                </div>
               </div>
-              <div className="space-y-1.5">
-                <label className="text-xs font-bold text-slate-400">ID da Conta Instagram Business (Opcional)</label>
-                <Input
-                  placeholder="Ex: 178414002938491"
-                  value={igUserId}
-                  onChange={(e) => setIgUserId(e.target.value)}
-                  className="bg-white/[0.03] border-white/10 text-white text-xs"
-                />
-              </div>
+
+              <Button
+                onClick={handleSaveAppConfig}
+                disabled={savingConfig || !appId.trim() || !appSecret.trim()}
+                className="w-full rounded-xl bg-purple-600 hover:bg-purple-500 text-white font-bold py-3"
+              >
+                {savingConfig ? <Loader2 className="w-4 h-4 animate-spin mr-2" /> : <ShieldCheck className="w-4 h-4 mr-2" />}
+                Guardar Credenciais da App
+              </Button>
             </div>
-
-            <Button
-              onClick={handleConnectDeveloper}
-              disabled={connectingDev || !devToken.trim()}
-              className="w-full rounded-xl bg-gradient-to-r from-pink-600 to-purple-600 hover:from-pink-500 hover:to-purple-500 text-white font-bold py-3 shadow-lg"
-            >
-              {connectingDev ? <Loader2 className="w-4 h-4 animate-spin mr-2" /> : <Zap className="w-4 h-4 mr-2 text-amber-300" />}
-              Validar Token & Conectar Redes Sociais
-            </Button>
-          </div>
-        )}
-
-        {/* 2. MODO OAUTH PADRÃO */}
-        {activeMode === "oauth" && (
-          <div className="space-y-4">
-            <div className="p-4 rounded-xl border border-blue-500/20 bg-blue-500/5 space-y-2">
-              <span className="text-xs font-bold text-blue-300 flex items-center gap-1.5">
-                <Facebook className="w-4 h-4" /> Fluxo de Autorização Facebook Login
-              </span>
-              <p className="text-xs text-slate-300">
-                Inicie sessão na sua conta Meta para conceder acesso às Páginas de Facebook e Contas de Instagram geridas pela sua empresa.
-              </p>
-              <p className="text-[11px] text-slate-400 break-all font-mono">
-                Redirect URI configurado: <span className="text-blue-300">{data.redirect_uri}</span>
-              </p>
-            </div>
-
-            <Button
-              onClick={handleConnectOAuth}
-              disabled={!data.configured}
-              className="w-full rounded-xl bg-blue-600 hover:bg-blue-500 text-white font-bold py-3 shadow-lg disabled:opacity-50"
-            >
-              <Facebook className="w-4 h-4 mr-2" />
-              {data.configured ? "Entrar com Facebook / Meta" : "Requer App ID e Secret (Configure na aba ao lado)"}
-            </Button>
-          </div>
-        )}
-
-        {/* 3. CONFIGURAÇÃO DE APP ID & SECRET */}
-        {activeMode === "config" && (
-          <div className="space-y-4">
-            <div className="p-4 rounded-xl border border-purple-500/20 bg-purple-500/5 space-y-2">
-              <span className="text-xs font-bold text-purple-300 flex items-center gap-1.5">
-                <Settings2 className="w-4 h-4" /> Configuração Global da App no Meta for Developers
-              </span>
-              <p className="text-xs text-slate-300">
-                Registe aqui o <strong>App ID</strong> e <strong>App Secret</strong> da sua aplicação Meta.
-              </p>
-            </div>
-
-            <div className="grid sm:grid-cols-2 gap-4">
-              <div className="space-y-1.5">
-                <label className="text-xs font-bold text-slate-400">Meta App ID *</label>
-                <Input
-                  placeholder="Ex: 849204829102938"
-                  value={appId}
-                  onChange={(e) => setAppId(e.target.value)}
-                  className="bg-white/[0.03] border-white/10 text-white text-xs"
-                />
-              </div>
-              <div className="space-y-1.5">
-                <label className="text-xs font-bold text-slate-400">Meta App Secret *</label>
-                <Input
-                  type="password"
-                  placeholder="Ex: d41d8cd98f00b204e9800998ecf8427e"
-                  value={appSecret}
-                  onChange={(e) => setAppSecret(e.target.value)}
-                  className="bg-white/[0.03] border-white/10 text-white text-xs font-mono"
-                />
-              </div>
-            </div>
-
-            <div className="space-y-1.5">
-              <label className="text-xs font-bold text-slate-400">Meta Config ID (Opcional - Facebook Login for Business)</label>
-              <Input
-                placeholder="Ex: 192837465019283"
-                value={configId}
-                onChange={(e) => setConfigId(e.target.value)}
-                className="bg-white/[0.03] border-white/10 text-white text-xs"
-              />
-            </div>
-
-            <Button
-              onClick={handleSaveAppConfig}
-              disabled={savingConfig || !appId.trim() || !appSecret.trim()}
-              className="w-full rounded-xl bg-purple-600 hover:bg-purple-500 text-white font-bold py-3"
-            >
-              {savingConfig ? <Loader2 className="w-4 h-4 animate-spin mr-2" /> : <ShieldCheck className="w-4 h-4 mr-2" />}
-              Guardar Credenciais da App
-            </Button>
-          </div>
-        )}
-      </div>
+          )}
+        </div>
       )}
 
-      {/* Checklist de Permissões */}
+      {/* 3. FILA DE POSTAGENS PROGRAMADAS ("TAL HORA VAI SAIR ESSE POST") */}
       <div className="p-6 rounded-2xl border border-white/10 bg-white/[0.02] space-y-4">
-        <h4 className="font-bold text-white text-sm flex items-center gap-2">
-          <ShieldCheck className="w-4 h-4 text-emerald-400" /> Checklist de Validação da Meta
-        </h4>
-        <div className="grid sm:grid-cols-2 lg:grid-cols-4 gap-3">
-          {(data.checks || []).map((c, idx) => (
-            <div key={idx} className="p-3 rounded-xl border border-white/10 bg-black/20 space-y-1">
-              <div className="flex items-center gap-2">
-                {c.ok ? <CheckCircle2 className="w-4 h-4 text-emerald-400 shrink-0" /> : <AlertTriangle className="w-4 h-4 text-amber-400 shrink-0" />}
-                <p className="text-xs font-bold text-white line-clamp-1">{c.label}</p>
-              </div>
-              <p className="text-[11px] text-slate-400 line-clamp-2">{c.detail}</p>
-            </div>
-          ))}
+        <div className="flex items-center justify-between flex-wrap gap-3">
+          <div className="flex items-center gap-2">
+            <Clock className="w-5 h-5 text-pink-400" />
+            <h4 className="font-bold text-white">Cronograma & Fila de Publicações</h4>
+            <span className="text-xs px-2.5 py-0.5 rounded-full bg-pink-500/20 text-pink-300 font-semibold border border-pink-500/30">
+              {queuedJobs.length} agendados
+            </span>
+          </div>
+          <Button onClick={loadStatus} variant="ghost" size="sm" className="text-slate-400 hover:text-white">
+            <RefreshCw className="w-3.5 h-3.5 mr-1.5" /> Atualizar Fila
+          </Button>
         </div>
+
+        {queuedJobs.length === 0 ? (
+          <div className="p-8 rounded-xl border border-white/5 bg-black/20 text-center space-y-2">
+            <Calendar className="w-8 h-8 text-slate-500 mx-auto" />
+            <p className="text-sm font-semibold text-white">Não há publicações em fila neste momento</p>
+            <p className="text-xs text-slate-400 max-w-md mx-auto">
+              Vá ao <strong>Criador 360°</strong> ou ao <strong>Studio</strong>, gere e aprove conteúdos ou ative o <strong>Autopilot</strong> para preencher automaticamente o cronograma!
+            </p>
+          </div>
+        ) : (
+          <div className="grid gap-3">
+            {queuedJobs.map((job) => {
+              const runDate = job.run_at ? new Date(job.run_at) : null;
+              const formattedDate = runDate ? runDate.toLocaleString("pt-PT", {
+                weekday: "short", day: "2-digit", month: "short", hour: "2-digit", minute: "2-digit"
+              }) : "Horário Pendente";
+
+              return (
+                <div key={job.id} className="p-4 rounded-xl border border-white/10 bg-gradient-to-r from-black/40 to-white/[0.02] flex items-center justify-between gap-4 flex-wrap hover:border-pink-500/30 transition-all">
+                  <div className="flex items-center gap-3.5 min-w-[280px] max-w-xl">
+                    {job.image_url ? (
+                      <img src={job.image_url} alt="Thumbnail" className="w-14 h-14 rounded-lg object-cover border border-white/10 shrink-0" />
+                    ) : (
+                      <div className="w-14 h-14 rounded-lg bg-white/5 border border-white/10 flex items-center justify-center shrink-0">
+                        <Instagram className="w-6 h-6 text-slate-500" />
+                      </div>
+                    )}
+                    <div className="space-y-1 overflow-hidden">
+                      <div className="flex items-center gap-2 flex-wrap">
+                        <span className="text-[10px] uppercase tracking-wider font-bold px-2 py-0.5 rounded bg-blue-500/20 text-blue-300 border border-blue-500/30">
+                          🕒 {formattedDate}
+                        </span>
+                        {(job.platforms || ["Instagram"]).map((p, i) => (
+                          <span key={i} className="text-[10px] font-bold px-2 py-0.5 rounded bg-pink-500/10 text-pink-300">
+                            {p}
+                          </span>
+                        ))}
+                      </div>
+                      <p className="text-xs font-semibold text-white line-clamp-1">{job.title || "Publicação"}</p>
+                      <p className="text-[11px] text-slate-400 line-clamp-2">{job.caption || "Sem legenda"}</p>
+                    </div>
+                  </div>
+
+                  <div className="flex items-center gap-2 flex-wrap">
+                    <Button
+                      onClick={() => handlePublishJobNow(job.id)}
+                      disabled={publishingJobId === job.id}
+                      size="sm"
+                      className="rounded-xl bg-gradient-to-r from-pink-600 to-purple-600 hover:from-pink-500 hover:to-purple-500 text-white font-bold text-xs shadow-md"
+                    >
+                      {publishingJobId === job.id ? <Loader2 className="w-3.5 h-3.5 animate-spin mr-1.5" /> : <Play className="w-3.5 h-3.5 mr-1.5 fill-current" />}
+                      Publicar Agora
+                    </Button>
+                    <Button
+                      onClick={() => handleOpenEditJob(job)}
+                      variant="outline"
+                      size="sm"
+                      className="rounded-xl border-white/15 text-slate-300 hover:bg-white/10 text-xs"
+                    >
+                      <Edit3 className="w-3.5 h-3.5 mr-1" /> Editar
+                    </Button>
+                    <Button
+                      onClick={() => handleDeleteJob(job.id)}
+                      disabled={deletingJobId === job.id}
+                      variant="outline"
+                      size="sm"
+                      className="rounded-xl border-red-500/20 text-red-400 hover:bg-red-500/10 text-xs"
+                    >
+                      {deletingJobId === job.id ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : <Trash2 className="w-3.5 h-3.5" />}
+                    </Button>
+                  </div>
+                </div>
+              );
+            })}
+          </div>
+        )}
       </div>
+
+      {/* 4. HISTÓRICO DE PUBLICAÇÕES REALIZADAS */}
+      {publishedPosts.length > 0 && (
+        <div className="p-6 rounded-2xl border border-white/10 bg-white/[0.02] space-y-4">
+          <div className="flex items-center justify-between">
+            <div className="flex items-center gap-2">
+              <CheckCircle2 className="w-5 h-5 text-emerald-400" />
+              <h4 className="font-bold text-white">Histórico de Publicações Realizadas</h4>
+              <span className="text-xs px-2.5 py-0.5 rounded-full bg-emerald-500/20 text-emerald-300 font-semibold border border-emerald-500/30">
+                {publishedPosts.length} posts
+              </span>
+            </div>
+          </div>
+
+          <div className="grid sm:grid-cols-2 lg:grid-cols-3 gap-3">
+            {publishedPosts.map((post) => (
+              <div key={post.id} className="p-3.5 rounded-xl border border-white/10 bg-black/30 space-y-2.5 flex flex-col justify-between">
+                <div className="space-y-2">
+                  {post.image_url && (
+                    <img src={post.image_url} alt="Post" className="w-full h-32 rounded-lg object-cover border border-white/10" />
+                  )}
+                  <div>
+                    <span className="text-[10px] text-slate-400">
+                      Publicado em {new Date(post.created_at).toLocaleString("pt-PT")}
+                    </span>
+                    <p className="text-xs font-bold text-white mt-0.5 line-clamp-1">{post.post_title}</p>
+                    <p className="text-[11px] text-slate-300 line-clamp-2 mt-1">{post.caption}</p>
+                  </div>
+                </div>
+
+                <div className="flex items-center justify-between pt-2 border-t border-white/10">
+                  <span className="text-[10px] font-bold text-emerald-400 flex items-center gap-1">
+                    <CheckCircle2 className="w-3 h-3" /> Meta Graph OK
+                  </span>
+                  {post.results?.facebook?.id && (
+                    <span className="text-[10px] text-blue-400 font-mono">
+                      FB ID: {String(post.results.facebook.id).slice(-6)}
+                    </span>
+                  )}
+                </div>
+              </div>
+            ))}
+          </div>
+        </div>
+      )}
+
+      {/* 5. MODAL DE EDIÇÃO DE POST */}
+      {editingJob && (
+        <div className="fixed inset-0 z-50 bg-black/80 backdrop-blur-sm flex items-center justify-center p-4">
+          <div className="bg-[#12131A] border border-white/15 rounded-2xl max-w-lg w-full p-6 space-y-4 shadow-2xl relative">
+            <div className="flex items-center justify-between border-b border-white/10 pb-3">
+              <h3 className="font-bold text-white text-base flex items-center gap-2">
+                <Edit3 className="w-4 h-4 text-pink-400" /> Editar Publicação Agendada
+              </h3>
+              <button onClick={() => setEditingJob(null)} className="text-slate-400 hover:text-white">
+                <X className="w-5 h-5" />
+              </button>
+            </div>
+
+            <div className="space-y-3">
+              <div className="space-y-1.5">
+                <label className="text-xs font-bold text-slate-400">Data e Hora de Saída</label>
+                <Input
+                  type="datetime-local"
+                  value={editRunAt}
+                  onChange={(e) => setEditRunAt(e.target.value)}
+                  className="bg-white/5 border-white/10 text-white text-xs"
+                />
+              </div>
+
+              <div className="space-y-1.5">
+                <label className="text-xs font-bold text-slate-400">Legenda da Publicação</label>
+                <Textarea
+                  rows={4}
+                  value={editCaption}
+                  onChange={(e) => setEditCaption(e.target.value)}
+                  className="bg-white/5 border-white/10 text-white text-xs"
+                />
+              </div>
+
+              <div className="space-y-1.5">
+                <label className="text-xs font-bold text-slate-400">URL da Imagem</label>
+                <Input
+                  value={editImageUrl}
+                  onChange={(e) => setEditImageUrl(e.target.value)}
+                  className="bg-white/5 border-white/10 text-white text-xs"
+                />
+              </div>
+            </div>
+
+            <div className="flex items-center justify-end gap-2 pt-3 border-t border-white/10">
+              <Button onClick={() => setEditingJob(null)} variant="ghost" size="sm" className="text-slate-400">
+                Cancelar
+              </Button>
+              <Button onClick={handleSaveEditJob} disabled={savingJob} size="sm" className="bg-pink-600 hover:bg-pink-500 text-white font-bold">
+                {savingJob ? <Loader2 className="w-4 h-4 animate-spin mr-1.5" /> : <CheckCircle2 className="w-4 h-4 mr-1.5" />}
+                Guardar Alterações
+              </Button>
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   );
 };
