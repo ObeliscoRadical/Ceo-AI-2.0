@@ -5,9 +5,9 @@ import os
 ROOT_DIR = Path(__file__).parent
 load_dotenv(ROOT_DIR / '.env')
 
-from fastapi import FastAPI, APIRouter, HTTPException
+from fastapi import FastAPI, APIRouter, HTTPException, Response
 from fastapi.responses import FileResponse
-from fastapi.staticfiles import StaticFiles
+import base64
 from starlette.middleware.cors import CORSMiddleware
 from apscheduler.schedulers.asyncio import AsyncIOScheduler
 from apscheduler.triggers.cron import CronTrigger
@@ -17,7 +17,56 @@ from core import db, client, hash_password, verify_password, init_storage, send_
 from routers import auth, companies, finance, ceo, documents, billing, misc, voice, founders, goals, council, crm, marketing, marketing_autonomous, social, prospecting, notifications, grants, erp_integrations, site_publishing, growth_agent, obelisco_sync, marketing_pipeline, tiktok
 
 app = FastAPI()
-app.mount("/uploads", StaticFiles(directory=str(UPLOAD_DIR)), name="uploads")
+
+# ---------------------------------------------------------------- Servidor Resiliente de Ficheiros / Uploads
+# Garante persistência permanente: se o ficheiro desaparecer do disco (ex: novo deploy / restart do Railway),
+# o ficheiro é automaticamente restaurado a partir do MongoDB (uploaded_files / social_media)
+async def _serve_uploaded_file(file_path: str):
+    target_path = UPLOAD_DIR / file_path
+    if target_path.is_file():
+        return FileResponse(str(target_path))
+    
+    fname = file_path.split("/")[-1]
+    doc = await db.uploaded_files.find_one({"filename": fname})
+    if not doc:
+        doc = await db.social_media.find_one({"_id": fname}) or await db.social_media.find_one({"filename": fname})
+    if not doc:
+        doc = await db.uploaded_files.find_one({"filename": file_path})
+    if not doc and "." in fname:
+        raw_id = fname.split(".")[0]
+        doc = await db.social_media.find_one({"_id": raw_id})
+        
+    if doc and doc.get("data"):
+        try:
+            raw_bytes = base64.b64decode(doc["data"])
+            try:
+                target_path.parent.mkdir(parents=True, exist_ok=True)
+                target_path.write_bytes(raw_bytes)
+            except Exception as e_write:
+                logger.debug(f"Não foi possível salvar cache em disco: {e_write}")
+                
+            ct = doc.get("content_type") or "image/png"
+            return Response(
+                content=raw_bytes,
+                media_type=ct,
+                headers={
+                    "Cache-Control": "public, max-age=31536000, immutable",
+                    "Access-Control-Allow-Origin": "*"
+                }
+            )
+        except Exception as err:
+            logger.error(f"Erro ao descodificar dados do MongoDB para {file_path}: {err}")
+
+    raise HTTPException(status_code=404, detail="Ficheiro não encontrado")
+
+@app.get("/uploads/{file_path:path}")
+async def serve_upload(file_path: str):
+    return await _serve_uploaded_file(file_path)
+
+@app.get("/api/uploads/{file_path:path}")
+async def serve_api_upload(file_path: str):
+    return await _serve_uploaded_file(file_path)
+
 api_router = APIRouter(prefix="/api")
 for _m in (auth, companies, finance, ceo, documents, billing, misc, voice, founders, goals, council, crm, marketing, marketing_autonomous, social, prospecting, notifications, grants, erp_integrations, site_publishing, growth_agent, obelisco_sync, marketing_pipeline, tiktok):
     api_router.include_router(_m.router)

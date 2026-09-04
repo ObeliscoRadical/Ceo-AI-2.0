@@ -544,17 +544,36 @@ def composite_logo(base_bytes: bytes, logo_bytes: bytes) -> bytes:
     return out.getvalue()
 
 async def store_public_media(uid: str, data: bytes, ct: str = "image/png") -> str:
-    """Guarda bytes de imagem e devolve URL público absoluto no backend."""
+    """Guarda bytes de imagem no MongoDB e devolve URL público persistente e seguro."""
     mid = str(uuid.uuid4())
-    await db.social_media.insert_one({
-        "_id": mid, 
-        "user_id": uid,
-        "data": base64.b64encode(data).decode(), 
-        "content_type": ct,
-        "created_at": datetime.now(timezone.utc).isoformat()
-    })
-    backend_port = os.environ.get("PORT", "8001")
-    return f"http://localhost:{backend_port}/api/public/media/{mid}"
+    fname = f"media_{mid}.png"
+    b64_data = base64.b64encode(data).decode()
+    now_iso = datetime.now(timezone.utc).isoformat()
+    await db.social_media.update_one(
+        {"_id": mid},
+        {"$set": {
+            "user_id": uid,
+            "filename": fname,
+            "data": b64_data,
+            "content_type": ct,
+            "created_at": now_iso
+        }},
+        upsert=True
+    )
+    await db.uploaded_files.update_one(
+        {"filename": fname},
+        {"$set": {
+            "data": b64_data,
+            "content_type": ct,
+            "created_at": now_iso
+        }},
+        upsert=True
+    )
+    try:
+        (UPLOAD_DIR / fname).write_bytes(data)
+    except Exception:
+        pass
+    return f"/uploads/{fname}"
 
 def extract_document_text(data: bytes, content_type: str, filename: str) -> str:
     name = (filename or "").lower(); ct = (content_type or "").lower()

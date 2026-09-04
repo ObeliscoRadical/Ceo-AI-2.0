@@ -277,7 +277,17 @@ export const ContentPoolSection = ({ poolData = {}, products = [], campaigns = [
                     </div>
                   ) : item.image_url ? (
                     <>
-                      <img src={item.image_url} alt="Thumbnail" className="w-full h-full object-cover" />
+                      <img 
+                        src={item.image_url} 
+                        alt="Thumbnail" 
+                        className="w-full h-full object-cover" 
+                        onError={(e) => {
+                          if (!e.target.dataset.retried) {
+                            e.target.dataset.retried = "true";
+                            e.target.src = `${item.image_url}${item.image_url.includes('?') ? '&' : '?'}t=${Date.now()}`;
+                          }
+                        }}
+                      />
                       <div className="absolute inset-0 bg-black/60 opacity-0 group-hover:opacity-100 transition-opacity flex items-center justify-center">
                         <Button
                           size="sm"

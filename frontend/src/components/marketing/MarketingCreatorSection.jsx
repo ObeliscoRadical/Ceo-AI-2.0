@@ -51,6 +51,30 @@ export const MarketingCreatorSection = ({
   const [activeSlideIndices, setActiveSlideIndices] = useState({});
   const [generatingImageIdx, setGeneratingImageIdx] = useState(null);
 
+  // Restaurar batchPosts salvos no localStorage ao carregar
+  useEffect(() => {
+    try {
+      const saved = localStorage.getItem("ceo_ai_creator_batch_posts");
+      if (saved) {
+        const parsed = JSON.parse(saved);
+        if (Array.isArray(parsed) && parsed.length > 0) {
+          setBatchPosts(parsed);
+          setSelectedIndices(new Set(parsed.map((_, i) => i)));
+          setShowBatchModal(true);
+        }
+      }
+    } catch (e) {}
+  }, []);
+
+  // Persistir batchPosts sempre que for atualizado
+  useEffect(() => {
+    if (batchPosts && batchPosts.length > 0) {
+      try {
+        localStorage.setItem("ceo_ai_creator_batch_posts", JSON.stringify(batchPosts));
+      } catch (e) {}
+    }
+  }, [batchPosts]);
+
   const handleGenerate = async () => {
     setGenerating(true);
     try {
@@ -193,6 +217,10 @@ export const MarketingCreatorSection = ({
 
       toast.success(res.data?.message || `${selectedPosts.length} criativos aprovados e enviados para o Content Pool!`);
       setShowBatchModal(false);
+      setBatchPosts([]);
+      try {
+        localStorage.removeItem("ceo_ai_creator_batch_posts");
+      } catch (e) {}
       if (onBatchApproveSuccess) {
         onBatchApproveSuccess();
       }

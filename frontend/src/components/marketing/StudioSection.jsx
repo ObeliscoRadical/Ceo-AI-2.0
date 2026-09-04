@@ -49,8 +49,41 @@ export const StudioSection = ({ products = [], campaigns = [], initialPost = nul
       if (initialPost.image_url) setImageUrl(initialPost.image_url);
       if (initialPost.image_variants) setImageVariants(initialPost.image_variants);
       if (initialPost.carousel_slides) setCarouselSlides(initialPost.carousel_slides);
+    } else {
+      try {
+        const saved = localStorage.getItem("ceo_ai_studio_draft");
+        if (saved) {
+          const draft = JSON.parse(saved);
+          if (draft.title) setTitle(draft.title);
+          if (draft.hook) setHook(draft.hook);
+          if (draft.caption) setCaption(draft.caption);
+          if (draft.cta) setCta(draft.cta);
+          if (draft.hashtags) setHashtags(draft.hashtags);
+          if (draft.visual_briefing) setVisualBriefing(draft.visual_briefing);
+          if (draft.image_url) setImageUrl(draft.image_url);
+          if (draft.image_variants) setImageVariants(draft.image_variants);
+          if (draft.format) setFormat(draft.format);
+          if (draft.product_id) setProductId(draft.product_id);
+          if (draft.campaign_id) setCampaignId(draft.campaign_id);
+        }
+      } catch (e) {
+        console.warn("Erro ao restaurar rascunho do Studio:", e);
+      }
     }
   }, [initialPost]);
+
+  // Persistir rascunho sempre que mudar para nunca perder imagens ou textos ao atualizar a página
+  useEffect(() => {
+    if (title || hook || caption || imageUrl) {
+      try {
+        localStorage.setItem("ceo_ai_studio_draft", JSON.stringify({
+          title, hook, caption, cta, hashtags, visual_briefing: visualBriefing,
+          image_url: imageUrl, image_variants: imageVariants,
+          format, product_id: productId, campaign_id: campaignId
+        }));
+      } catch (e) {}
+    }
+  }, [title, hook, caption, cta, hashtags, visualBriefing, imageUrl, imageVariants, format, productId, campaignId]);
 
   const handleGeneratePost = async () => {
     setGenerating(true);
@@ -88,8 +121,9 @@ export const StudioSection = ({ products = [], campaigns = [], initialPost = nul
     setGeneratingImage(true);
     try {
       const res = await api.post("/marketing/studio/generate-image", {
-        prompt: visualBriefing || `${title || idea || "business commercial"} professional photography 8k`,
-        title: title || idea
+        prompt: visualBriefing || `${title || idea || "business commercial"} professional photography 1k`,
+        title: title || idea,
+        format
       });
       if (res.data?.image_url) {
         setImageUrl(res.data.image_url);
