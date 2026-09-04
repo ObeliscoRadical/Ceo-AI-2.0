@@ -240,19 +240,43 @@ async def search_topic_exact_images(query: str, count: int = 3) -> list[bytes]:
         logger.debug(f"search_topic_exact_images note: {e}")
     return results
 
+async def _apply_studio_polish(raw_bytes: bytes) -> bytes:
+    """Aplica acabamento fotográfico de estúdio comercial: nitidez micro-textural, contraste dinâmico e cores ricas."""
+    try:
+        from PIL import Image, ImageEnhance, ImageFilter
+        img = Image.open(io.BytesIO(raw_bytes))
+        if img.mode != 'RGB':
+            img = img.convert('RGB')
+        
+        # 1. Unsharp mask subtil para nitidez cirúrgica de micro-texturas (roupas, pele, arquitetura)
+        img = img.filter(ImageFilter.UnsharpMask(radius=1.2, percent=70, threshold=2))
+        
+        # 2. Contraste dinâmico editorial (estilo capa da Forbes / GQ)
+        img = ImageEnhance.Contrast(img).enhance(1.04)
+        
+        # 3. Vivacidade e temperatura de cor natural
+        img = ImageEnhance.Color(img).enhance(1.02)
+        
+        buf = io.BytesIO()
+        img.save(buf, format="JPEG", quality=95, subsampling=0)
+        return buf.getvalue()
+    except Exception as e:
+        logger.debug(f"Studio polish note: {e}")
+        return raw_bytes
+
 async def generate_marketing_images(prompt: str = "", number_of_images: int = 3, scene_prompts: list[str] = None, topic_query: str = "") -> list[bytes]:
-    """Gera 1..N imagens de marketing ultra-realistas com qualidade editorial fotográfica de topo."""
+    """Gera 1..N imagens de marketing ultra-realistas com qualidade editorial fotográfica de topo e pós-processamento de estúdio."""
     count = max(1, min(int(number_of_images or 3), 4))
     
-    # Prefixos fotográficos de alta fidelidade cinematográfica (estilo Sony A7R / Hasselblad)
+    # Diretores fotográficos cinematográficos de estúdio (Hasselblad, Leica, Sony G Master)
     PHOTO_ENHANCERS = [
-        "captured on 35mm Hasselblad H6D-100c, 85mm f/1.4 portrait lens, soft natural window lighting, rich skin textures, authentic expressions, hyper-detailed, award-winning editorial commercial photography, 8k uhd, cinematic color grading, photorealistic, no illustration, no 3d render, no anime, no text, no watermark",
-        "captured on Sony A7R V, 50mm f/1.2 G Master lens, cinematic warm golden hour ambient lighting, subtle depth of field, authentic real-life environment, sharp focus on subject, commercial advertising photography, 8k, hyper-realistic, no cartoon, no CGI, no watermark, no text",
-        "captured on Leica SL2, 24-70mm f/2.8 lens, modern architectural corporate lighting, crisp details, natural realistic shadows, depth, high dynamic range, hyperrealistic editorial photoshoot, 8k, pristine quality, no drawing, no CGI, no watermark, no text"
+        "shot on Hasselblad H6D-100c, 85mm f/1.4 portrait lens, soft natural diffused window light, rich micro skin texture, authentic executive expression, premium tailored charcoal suit, luxury architectural boardroom, 8k uhd, cinematic color grading, magazine editorial photography, no cartoon, no 3d render, no anime, no text, no watermark",
+        "shot on Sony A7R V, 50mm f/1.2 G Master lens, warm cinematic golden hour ambient light, subtle depth of field, modern high-tech workspace, sharp focus, authentic commercial advertising photoshoot, 8k resolution, photorealistic, no CGI, no drawing, no watermark, no text",
+        "shot on Leica SL2, 24-70mm f/2.8 lens, contemporary corporate architectural lighting, crisp edge details, natural realistic shadows, high dynamic range, Forbes magazine cover aesthetic, 8k, pristine quality, no illustration, no plastic skin, no watermark, no text"
     ]
     
     if not scene_prompts:
-        clean_p = prompt or "successful professional entrepreneur managing operations in high-end modern workspace"
+        clean_p = prompt or "charismatic successful entrepreneur managing operations in luxury modern workspace"
         scene_prompts = [
             f"{clean_p}, {PHOTO_ENHANCERS[i % len(PHOTO_ENHANCERS)]}"
             for i in range(count)
@@ -273,14 +297,14 @@ async def generate_marketing_images(prompt: str = "", number_of_images: int = 3,
             base_seed = int(time.time() * 1000) % 1000000 + (idx * 337)
             enc_scene = urllib.parse.quote(scene[:420])
 
-            # 1. Tentar Pollinations AI (Flux Pro / Flux Realism com seeds variadas)
+            # 1. Tentar Pollinations AI (Flux Realism / Flux Pro com seeds variadas)
             attempts = [("flux-realism", base_seed), ("flux", base_seed + 1), ("flux-pro", base_seed + 2), ("turbo", base_seed + 3)]
             for model_name, seed in attempts:
                 poll_url = f"https://image.pollinations.ai/prompt/{enc_scene}?width=1080&height=1080&seed={seed}&nologo=true&model={model_name}&enhance=true"
                 try:
                     res = await client.get(poll_url)
                     if res.status_code == 200 and len(res.content) > 5000 and not res.content.startswith(b'{"error"'):
-                        img_bytes = res.content
+                        img_bytes = await _apply_studio_polish(res.content)
                         break
                 except Exception as e:
                     logger.debug(f"Pollinations model {model_name} note: {e}")
@@ -299,7 +323,8 @@ async def generate_marketing_images(prompt: str = "", number_of_images: int = 3,
         clean_q = re.sub(r'(photorealistic|8k|no text|no watermark|no logos|no cgi|no abstract|commercial photography|,)', ' ', search_q)
         topic_images = await search_topic_exact_images(clean_q.strip(), count=needed)
         for t_img in topic_images:
-            results.append(t_img)
+            polished = await _apply_studio_polish(t_img)
+            results.append(polished)
             if len(results) >= count:
                 break
 
