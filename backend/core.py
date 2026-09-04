@@ -244,42 +244,49 @@ async def search_topic_exact_images(query: str, count: int = 3) -> list[bytes]:
     return results
 
 async def _apply_studio_polish(raw_bytes: bytes) -> bytes:
-    """Aplica acabamento fotográfico de estúdio comercial: nitidez micro-textural, contraste dinâmico e cores ricas."""
+    """Aplica acabamento de sensor óptico analógico: remove o aspeto plástico/liso da IA adicionando grão subtil de película e calibração de cor natural."""
     try:
         from PIL import Image, ImageEnhance, ImageFilter
+        import numpy as np
+        
         img = Image.open(io.BytesIO(raw_bytes))
         if img.mode != 'RGB':
             img = img.convert('RGB')
         
-        # 1. Unsharp mask subtil para nitidez cirúrgica de micro-texturas (roupas, pele, arquitetura)
-        img = img.filter(ImageFilter.UnsharpMask(radius=1.2, percent=70, threshold=2))
+        # 1. Unsharp mask cirúrgico para nitidez óptica real sem halos digitais
+        img = img.filter(ImageFilter.UnsharpMask(radius=1.0, percent=60, threshold=3))
         
-        # 2. Contraste dinâmico editorial (estilo capa da Forbes / GQ)
-        img = ImageEnhance.Contrast(img).enhance(1.04)
+        # 2. Injeção de ruído de sensor óptico físico (grão Kodak Portra / ISO 200) que quebra a textura lisa/plástica da IA
+        arr = np.array(img, dtype=np.float32)
+        h, w, c = arr.shape
+        noise = np.random.normal(0, 3.0, (h, w, c)).astype(np.float32)
+        noisy_arr = np.clip(arr + noise, 0, 255).astype(np.uint8)
+        grained_img = Image.fromarray(noisy_arr)
         
-        # 3. Vivacidade e temperatura de cor natural
-        img = ImageEnhance.Color(img).enhance(1.02)
+        # 3. Calibração de tom: reduz ligeiramente a saturação artificial da IA (0.96) para cores reais documentais
+        grained_img = ImageEnhance.Color(grained_img).enhance(0.96)
+        grained_img = ImageEnhance.Contrast(grained_img).enhance(1.03)
         
         buf = io.BytesIO()
-        img.save(buf, format="JPEG", quality=95, subsampling=0)
+        grained_img.save(buf, format="JPEG", quality=96, subsampling=0)
         return buf.getvalue()
     except Exception as e:
         logger.debug(f"Studio polish note: {e}")
         return raw_bytes
 
 async def generate_marketing_images(prompt: str = "", number_of_images: int = 3, scene_prompts: list[str] = None, topic_query: str = "") -> list[bytes]:
-    """Gera 1..N imagens de marketing ultra-realistas com qualidade editorial fotográfica de topo e pós-processamento de estúdio."""
+    """Gera 1..N imagens com padrão de fotografia documental real (Zero aspeto de IA ou render 3D)."""
     count = max(1, min(int(number_of_images or 3), 4))
     
-    # Diretores fotográficos cinematográficos de estúdio (Hasselblad, Leica, Sony G Master)
+    # Diretores fotográficos documentais (Canon EOS R5 / Leica M10 / 35mm film grain, sem jargão de IA)
     PHOTO_ENHANCERS = [
-        "shot on Hasselblad H6D-100c, 85mm f/1.4 portrait lens, soft natural diffused window light, rich micro skin texture, authentic executive expression, premium tailored charcoal suit, luxury architectural boardroom, 8k uhd, cinematic color grading, magazine editorial photography, no cartoon, no 3d render, no anime, no text, no watermark",
-        "shot on Sony A7R V, 50mm f/1.2 G Master lens, warm cinematic golden hour ambient light, subtle depth of field, modern high-tech workspace, sharp focus, authentic commercial advertising photoshoot, 8k resolution, photorealistic, no CGI, no drawing, no watermark, no text",
-        "shot on Leica SL2, 24-70mm f/2.8 lens, contemporary corporate architectural lighting, crisp edge details, natural realistic shadows, high dynamic range, Forbes magazine cover aesthetic, 8k, pristine quality, no illustration, no plastic skin, no watermark, no text"
+        "raw candid 35mm documentary photograph, shot on Canon EOS R5 with 50mm f/1.4 lens, natural overcast daylight, authentic candid unposed moment, ISO 400, natural uneven room light, authentic human skin with visible micro pores and natural imperfections, subtle organic shadows, subtle Kodak Portra film grain, strictly no 3D render, no CGI, no smooth plastic skin, no airbrushing, no stock photo look, no artificial glow, no text, no watermark",
+        "raw documentary 35mm photograph, shot on Leica M10 with 35mm f/2.0 lens, soft natural window light, authentic workplace moment, candid human expression, realistic fabric textures and natural room background, muted authentic color grading, subtle film grain, strictly no render, no CGI, no plastic sheen, no airbrushed face, no stock photography, no text, no watermark",
+        "raw editorial documentary photo, shot on Sony A7R V with 85mm f/1.8 lens, natural ambient room light, shallow depth of field, unposed authentic professional interaction, real tactile materials, documentary aesthetic, strictly no 3D, no illustration, no airbrushing, no artificial smoothing, no text, no watermark"
     ]
     
     if not scene_prompts:
-        clean_p = prompt or "charismatic successful entrepreneur managing operations in luxury modern workspace"
+        clean_p = prompt or "authentic entrepreneur managing daily operations in real contemporary workspace"
         scene_prompts = [
             f"{clean_p}, {PHOTO_ENHANCERS[i % len(PHOTO_ENHANCERS)]}"
             for i in range(count)
@@ -300,7 +307,7 @@ async def generate_marketing_images(prompt: str = "", number_of_images: int = 3,
             base_seed = int(time.time() * 1000) % 1000000 + (idx * 337)
             enc_scene = urllib.parse.quote(scene[:420])
 
-            # 1. Tentar Pollinations AI (Flux Realism / Flux Pro com seeds variadas)
+            # 1. Tentar Pollinations AI (Flux Realism com semente única)
             attempts = [("flux-realism", base_seed), ("flux", base_seed + 1), ("flux-pro", base_seed + 2), ("turbo", base_seed + 3)]
             for model_name, seed in attempts:
                 poll_url = f"https://image.pollinations.ai/prompt/{enc_scene}?width=1080&height=1080&seed={seed}&nologo=true&model={model_name}&enhance=true"
