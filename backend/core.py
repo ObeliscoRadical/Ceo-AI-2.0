@@ -170,44 +170,47 @@ def put_object(path: str, data: bytes, content_type: str) -> dict:
     return {"path": path, "url": f"/uploads/{path}"}
 
 async def generate_post_visual_scenes(titulo: str, legenda: str, hook: str = "", product_name: str = "", sector: str = "", company_name: str = "") -> list[str]:
-    """Usa o Gemini como Diretor Criativo Fotográfico para criar 3 cenas visuais em inglês ultra-contextualizadas com o GANCHO (HOOK), PRODUTO e HISTÓRIA real da peça."""
+    """Usa a IA como Diretor Fotográfico Comercial de Topo para criar 3 cenas visuais altamente contextuais, cinematográficas e fiéis à história do post."""
     system = (
-        "You are an award-winning Commercial Photography Creative Director for high-converting advertising. "
-        "Your job is to translate a social media post's HOOK, TITLE, PRODUCT, and CAPTION into 3 distinct, "
-        "ultra-concrete, photorealistic commercial photography scene prompts for the Flux AI image generator.\n\n"
-        "MANDATORY RULES:\n"
-        "1. NO ABSTRACT CONCEPTS, NO EMPTY CORRIDORS, NO FLOATING OBJECTS, NO GENERIC LAMPS/WALLS.\n"
-        "2. The image MUST depict real humans in action, authentic professional workplace/lifestyle situations that directly reflect the emotional tension of the HOOK and the value of the PRODUCT (e.g. focused business owner managing operations, skilled technician working on site, confident executive in modern office, customer experiencing the direct benefit).\n"
-        "3. Every prompt must be in descriptive English (35-50 words), detailing: Subject, Action, Facial Expression, Setting/Environment, Lighting (e.g. warm cinematic natural light), Camera Shot (e.g. medium commercial portrait, sharp focus on subject), 8k resolution, photorealistic.\n"
-        "4. Always append: 'award winning commercial photography, 8k, photorealistic, sharp focus, no text, no words, no letters, no logos, no watermark, no CGI, no cartoon'.\n"
-        "5. Return ONLY a JSON list of 3 strings: [\"prompt1\", \"prompt2\", \"prompt3\"]."
+        "You are an elite Commercial Photography Creative Director for luxury and corporate advertising (Vogue, Forbes, Architectural Digest, GQ).\n"
+        "Your mission is to translate a social media post's HOOK, TITLE, SECTOR, PRODUCT, and CAPTION into 3 distinct, "
+        "ultra-realistic, tangible commercial photography scene prompts for the Flux AI image generator.\n\n"
+        "CRITICAL PHOTOGRAPHIC RULES:\n"
+        "1. NO ABSTRACT CONCEPTS, NO EMPTY WALLS, NO 3D GRAPHICS, NO METAPHORICAL FLOATING SHAPES.\n"
+        "2. Ground each scene in the REAL TANGIBLE ENVIRONMENT of the specific industry (e.g. active architectural construction site with blueprints/tools, sleek glass corporate boardroom, high-end technical laboratory, luxury boutique).\n"
+        "3. Focus on REAL HUMANS IN AUTHENTIC ACTION with genuine, micro-expressions (focused problem-solving, strategic leadership, specialized craftsmanship, confident relief).\n"
+        "4. Structure each prompt with: [Framing & Shot Type] + [Subject in specific industry attire] + [Concrete Action & Environment] + [Natural Lighting & Studio Optics: Hasselblad 85mm f/1.4, diffused softbox daylight, shallow depth of field, authentic micro skin texture, rich fabric weave] + [8k uhd commercial photography, raw documentary aesthetic, no text, no letters, no watermark, no CGI, no cartoon, no 3d render].\n"
+        "5. Output STRICTLY a JSON array of 3 strings: [\"scene_1\", \"scene_2\", \"scene_3\"]."
     )
     user_prompt = (
-        f"Empresa: {company_name or 'Empresa Líder'} (Setor: {sector or 'Serviços Especializados'})\n"
-        f"Produto/Serviço: {product_name or 'Solução Profissional'}\n"
+        f"Empresa: {company_name or 'Empresa Líder'}\n"
+        f"Setor / Atividade: {sector or 'Serviços Especializados'}\n"
+        f"Produto / Solução: {product_name or 'Solução Profissional'}\n"
         f"Gancho (Hook de Abertura): {hook}\n"
-        f"Título da Peça: {titulo}\n"
-        f"Legenda / Copy: {legenda[:400]}\n\n"
-        "Generate 3 distinct realistic commercial photography scene prompts strictly grounded in the HOOK and PRODUCT context in JSON format:"
+        f"Título do Post: {titulo}\n"
+        f"Texto / Legenda: {legenda[:450]}\n\n"
+        "Generate 3 distinct ultra-realistic photography scene prompts strictly tailored to this post context in JSON format:"
     )
     try:
         res = await ai_text(system, user_prompt)
-        start = res.find('[')
-        end = res.rfind(']') + 1
+        clean_res = re.sub(r'```(?:json)?', '', res).strip()
+        start = clean_res.find('[')
+        end = clean_res.rfind(']') + 1
         if start >= 0 and end > start:
-            parsed = json.loads(res[start:end])
+            parsed = json.loads(clean_res[start:end])
             if isinstance(parsed, list) and len(parsed) >= 1:
                 return [str(p).strip() for p in parsed if p][:3]
     except Exception as e:
         logger.warning(f"generate_post_visual_scenes note: {e}")
     
     # Concrete context fallback
-    subj = product_name or company_name or "commercial business"
-    hook_desc = hook or titulo or "business management operations"
+    subj = product_name or company_name or "specialized professional"
+    sec = sector or "business"
+    hook_desc = hook or titulo or "managing operations"
     return [
-        f"Professional business owner actively working at a modern office desk with laptop and documents illustrating '{hook_desc}', warm cinematic sunlight, realistic human expression, sharp focus, award winning commercial photography, 8k, photorealistic, no text, no watermark",
-        f"Close up dynamic shot of a specialist in uniform with modern tools delivering {subj}, clean professional facility, crisp lighting, depth of field, 8k photorealistic commercial photography, no text, no watermark",
-        f"Confident executive reviewing strategic growth dashboard on tablet in a bright contemporary workplace, natural window lighting, 8k, editorial commercial photography, no text, no watermark"
+        f"Medium commercial portrait of a dedicated {sec} specialist in authentic professional attire actively resolving '{hook_desc}', shot on 35mm Hasselblad 85mm f/1.4, natural soft window daylight, crisp micro skin texture, authentic human expression, modern facility, 8k uhd, editorial commercial photography, no text, no watermark, no CGI",
+        f"Close up dynamic shot of specialized hands and premium instruments delivering {subj}, clean contemporary environment, cinematic lighting, shallow depth of field, 8k commercial photography, no text, no watermark, no cartoon",
+        f"Wide architectural shot of a confident entrepreneur in modern executive space reviewing results, golden hour ambient light, rich authentic textures, 8k commercial photography, no text, no watermark"
     ]
 
 async def search_topic_exact_images(query: str, count: int = 3) -> list[bytes]:
