@@ -1144,6 +1144,87 @@ async def get_content_pool(
     }
 
 
+@router.post("/marketing/pool/generate-all-images")
+async def generate_all_pool_images(payload: Optional[Dict[str, Any]] = None, user: dict = Depends(premium_user)):
+    """Gera imagens com padrão fotográfico profissional em lote para todos os itens do Content Pool."""
+    uid = user["id"]
+    cid = await active_company_id(uid)
+    company = await resolve_company(uid) or {}
+    
+    payload = payload or {}
+    force_all = payload.get("force", False)
+    item_ids = payload.get("item_ids")
+    
+    query: Dict[str, Any] = {"user_id": uid, "company_id": cid}
+    if item_ids and isinstance(item_ids, list) and len(item_ids) > 0:
+        query["_id"] = {"$in": [ObjectId(i) for i in item_ids if ObjectId.is_valid(i)]}
+    elif not force_all:
+        query["$or"] = [
+            {"image_url": None},
+            {"image_url": ""},
+            {"image_url": {"$exists": False}}
+        ]
+        
+    items = await db.marketing_content_pool.find(query).to_list(100)
+    if not items:
+        return {"ok": True, "count": 0, "total_attempted": 0, "message": "Nenhum conteúdo elegível para gerar imagens"}
+        
+    generated_count = 0
+    now_iso = datetime.now(timezone.utc).isoformat()
+    
+    for item in items:
+        try:
+            hook = item.get("hook") or ""
+            title = item.get("title") or "Post Profissional"
+            caption = item.get("caption") or ""
+            product_name = item.get("product_name") or ""
+            prompt = item.get("visual_briefing") or ""
+            
+            scenes = await generate_post_visual_scenes(
+                titulo=title,
+                legenda=caption,
+                hook=hook,
+                product_name=product_name,
+                sector=company.get("sector", ""),
+                company_name=company.get("name", "")
+            )
+            raw_imgs = await generate_marketing_images(
+                prompt=scenes[0] if scenes else prompt,
+                number_of_images=1,
+                scene_prompts=scenes,
+                topic_query=f"{product_name} {hook}".strip() or "business professional"
+            )
+            if raw_imgs and len(raw_imgs[0]) > 500:
+                fname = f"pool_batch_{uuid.uuid4().hex[:12]}.png"
+                (UPLOAD_DIR / fname).write_bytes(raw_imgs[0])
+                b64_str = base64.b64encode(raw_imgs[0]).decode()
+                await db.uploaded_files.update_one(
+                    {"filename": fname},
+                    {"$set": {"data": b64_str, "content_type": "image/png", "created_at": now_iso}},
+                    upsert=True
+                )
+                await db.social_media.update_one(
+                    {"_id": fname},
+                    {"$set": {"user_id": uid, "filename": fname, "data": b64_str, "content_type": "image/png", "created_at": now_iso}},
+                    upsert=True
+                )
+                img_url = f"/uploads/{fname}"
+                await db.marketing_content_pool.update_one(
+                    {"_id": item["_id"]},
+                    {"$set": {"image_url": img_url, "updated_at": now_iso}, "$addToSet": {"image_variants": img_url}}
+                )
+                generated_count += 1
+        except Exception as e:
+            logger.error(f"Erro ao gerar imagem em lote para item {item.get('_id')}: {e}")
+            
+    return {
+        "ok": True,
+        "count": generated_count,
+        "total_attempted": len(items),
+        "message": f"{generated_count} de {len(items)} imagens fotográficas geradas com sucesso para o Content Pool!"
+    }
+
+
 @router.put("/marketing/pool/{item_id}/status")
 async def update_pool_item_status(item_id: str, payload: Dict[str, str], user: dict = Depends(premium_user)):
     """Atualiza o estado de um item no Content Pool."""

@@ -1,7 +1,7 @@
 import { useState } from "react";
 import { Button } from "@/components/ui/button";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
-import { Database, Plus, RefreshCw, Calendar, Send, Trash2, CheckCircle2, Clock, AlertTriangle, ShieldCheck, Flame, Layers } from "lucide-react";
+import { Database, Plus, RefreshCw, Calendar, Send, Trash2, CheckCircle2, Clock, AlertTriangle, ShieldCheck, Flame, Layers, Sparkles } from "lucide-react";
 import { toast } from "sonner";
 
 export const ContentPoolSection = ({ poolData = {}, products = [], campaigns = [], onRefresh, onOpenStudio, api }) => {
@@ -9,10 +9,45 @@ export const ContentPoolSection = ({ poolData = {}, products = [], campaigns = [
   const [filterProduct, setFilterProduct] = useState("ALL");
   const [filterCampaign, setFilterCampaign] = useState("ALL");
   const [generatingImgId, setGeneratingImgId] = useState(null);
+  const [generatingAll, setGeneratingAll] = useState(false);
 
   const items = poolData.items || [];
   const counts = poolData.counts || {};
   const runway = poolData.runway || { available_stock: 0, daily_rate: 2, runway_days: 0, status: "healthy" };
+
+  const missingImagesCount = items.filter(i => !i.image_url).length;
+
+  const handleGenerateAllPoolImages = async (force = false) => {
+    const targetCount = force ? items.length : missingImagesCount;
+    if (targetCount === 0 && !force) {
+      toast.info("Todos os conteúdos do pool já possuem imagens!");
+      return;
+    }
+    if (force && !window.confirm(`Deseja regenerar as imagens de todos os ${items.length} posts do pool com o padrão fotográfico ultra-realista?`)) {
+      return;
+    }
+
+    setGeneratingAll(true);
+    toast.loading(
+      force 
+        ? `A regenerar ${items.length} imagens com IA no Content Pool... Isto pode demorar alguns instantes.` 
+        : `A gerar ${missingImagesCount} imagens em falta com IA...`, 
+      { id: "batch-pool-img" }
+    );
+    try {
+      const res = await api.post("/marketing/pool/generate-all-images", { force });
+      if (res.data?.ok) {
+        toast.success(res.data.message || `${res.data.count} imagens geradas com sucesso!`, { id: "batch-pool-img" });
+        onRefresh();
+      } else {
+        toast.error("Não foi possível gerar as imagens.", { id: "batch-pool-img" });
+      }
+    } catch (e) {
+      toast.error(e.response?.data?.detail || "Erro ao gerar imagens em lote.", { id: "batch-pool-img" });
+    } finally {
+      setGeneratingAll(false);
+    }
+  };
 
   const handleStatusChange = async (itemId, newStatus) => {
     try {
@@ -154,9 +189,56 @@ export const ContentPoolSection = ({ poolData = {}, products = [], campaigns = [
           </Select>
         </div>
 
-        <Button onClick={onOpenStudio} size="sm" className="rounded-xl bg-blue-600 hover:bg-blue-500 text-white text-xs font-medium">
-          <Plus className="w-3.5 h-3.5 mr-1" /> Criar Novo Conteúdo
-        </Button>
+        <div className="flex items-center gap-2 flex-wrap">
+          {items.length > 0 && (
+            <>
+              {missingImagesCount > 0 ? (
+                <Button 
+                  onClick={() => handleGenerateAllPoolImages(false)} 
+                  disabled={generatingAll} 
+                  size="sm" 
+                  className="rounded-xl bg-gradient-to-r from-emerald-600 via-teal-600 to-cyan-600 hover:from-emerald-500 hover:to-teal-500 text-white text-xs font-bold shadow-lg shadow-emerald-950/40 border border-emerald-500/30"
+                >
+                  {generatingAll ? (
+                    <>
+                      <RefreshCw className="w-3.5 h-3.5 mr-1.5 animate-spin" />
+                      A Gerar Imagens...
+                    </>
+                  ) : (
+                    <>
+                      <Sparkles className="w-3.5 h-3.5 mr-1.5 text-amber-300" />
+                      Gerar Todas as Imagens em Falta ({missingImagesCount})
+                    </>
+                  )}
+                </Button>
+              ) : (
+                <Button 
+                  onClick={() => handleGenerateAllPoolImages(true)} 
+                  disabled={generatingAll} 
+                  variant="outline"
+                  size="sm" 
+                  className="rounded-xl border-emerald-500/40 bg-emerald-500/10 hover:bg-emerald-500/20 text-emerald-300 text-xs font-bold"
+                >
+                  {generatingAll ? (
+                    <>
+                      <RefreshCw className="w-3.5 h-3.5 mr-1.5 animate-spin" />
+                      A Regenerar...
+                    </>
+                  ) : (
+                    <>
+                      <Sparkles className="w-3.5 h-3.5 mr-1.5 text-amber-300" />
+                      Regenerar Todas as Imagens ({items.length})
+                    </>
+                  )}
+                </Button>
+              )}
+            </>
+          )}
+
+          <Button onClick={onOpenStudio} size="sm" className="rounded-xl bg-blue-600 hover:bg-blue-500 text-white text-xs font-medium">
+            <Plus className="w-3.5 h-3.5 mr-1" /> Criar Novo Conteúdo
+          </Button>
+        </div>
       </div>
 
       {/* Grid de Itens do Pool */}
