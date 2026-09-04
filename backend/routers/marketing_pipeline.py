@@ -1007,17 +1007,10 @@ async def generate_single_studio_image(payload: Dict[str, Any], user: dict = Dep
                 "colors": company.get("brand_colors") or company.get("colors")
             }
         )
-        scenes = await generate_post_visual_scenes(
-            titulo=title or prompt or "Post de Negócios",
-            legenda=caption,
-            hook=hook,
-            product_name=product_name,
-            sector=company.get("sector", ""),
-            company_name=company.get("name", "")
-        )
+        scenes = [visual_prompt] if visual_prompt else [prompt or "Post Profissional"]
         topic_q = f"{product_name} {hook}".strip() or "business professional"
         raw_imgs = await generate_marketing_images(
-            prompt=visual_prompt or (scenes[0] if scenes else prompt),
+            prompt=visual_prompt or prompt,
             number_of_images=1,
             scene_prompts=scenes,
             topic_query=topic_q
@@ -1242,14 +1235,7 @@ async def generate_all_pool_images(payload: Optional[Dict[str, Any]] = None, use
                     "colors": company.get("brand_colors") or company.get("colors")
                 }
             )
-            scenes = await generate_post_visual_scenes(
-                titulo=title,
-                legenda=caption,
-                hook=hook,
-                product_name=product_name,
-                sector=company.get("sector", ""),
-                company_name=company.get("name", "")
-            )
+            scenes = [visual_prompt] if visual_prompt else [prompt or "Post Profissional"]
             raw_imgs = await generate_marketing_images(
                 prompt=visual_prompt or (scenes[0] if scenes else prompt),
                 number_of_images=1,
