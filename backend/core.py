@@ -362,33 +362,66 @@ async def generate_marketing_images(prompt: str = "", number_of_images: int = 3,
         ]
     
     results = []
-    headers = {"User-Agent": "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36"}
 
-    poll_timeout = httpx.Timeout(90.0, connect=15.0)
-    async with httpx.AsyncClient(timeout=poll_timeout, follow_redirects=True, headers=headers) as client:
-        for idx, scene in enumerate(scene_prompts[:count]):
-            img_bytes = None
-            base_seed = int(time.time() * 1000) % 1000000 + (idx * 337)
-            enc_scene = urllib.parse.quote(scene[:420])
+    # 1. Motor Primário: Chave PAGA exclusiva do Gemini para Imagens (gemini-2.5-flash-image / Nano Banana)
+    gemini_img_key = os.environ.get("GEMINI_IMAGE_API_KEY")
+    if gemini_img_key:
+        try:
+            from google import genai
+            client_img = genai.Client(api_key=gemini_img_key)
+            for idx, scene in enumerate(scene_prompts[:count]):
+                img_bytes = None
+                for model_name in ["gemini-2.5-flash-image", "gemini-3.1-flash-image", "gemini-3-pro-image"]:
+                    try:
+                        res = client_img.models.generate_content(
+                            model=model_name,
+                            contents=scene[:500]
+                        )
+                        if res and res.candidates:
+                            for part in res.candidates[0].content.parts:
+                                if part.inline_data and part.inline_data.data:
+                                    img_bytes = await _apply_studio_polish(part.inline_data.data)
+                                    break
+                        if img_bytes:
+                            break
+                    except Exception as err_m:
+                        logger.debug(f"Gemini image model {model_name} note: {err_m}")
+                        
+                if img_bytes:
+                    results.append(img_bytes)
+                if len(results) >= count:
+                    break
+        except Exception as e_gemini:
+            logger.warning(f"Erro ao gerar com chave paga do Gemini para imagens: {e_gemini}")
 
-            # 1. Tentar Pollinations AI (Flux Realism com semente única)
-            attempts = [("flux-realism", base_seed), ("flux", base_seed + 1), ("flux-pro", base_seed + 2), ("turbo", base_seed + 3)]
-            for model_name, seed in attempts:
-                poll_url = f"https://image.pollinations.ai/prompt/{enc_scene}?width=1080&height=1080&seed={seed}&nologo=true&model={model_name}&enhance=true"
-                try:
-                    res = await client.get(poll_url)
-                    if res.status_code == 200 and len(res.content) > 5000 and not res.content.startswith(b'{"error"'):
-                        img_bytes = await _apply_studio_polish(res.content)
-                        break
-                except Exception as e:
-                    logger.debug(f"Pollinations model {model_name} note: {e}")
+    # 2. Motor Secundário: Pollinations AI / Flux (caso necessário)
+    if len(results) < count:
+        headers = {"User-Agent": "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36"}
+        poll_timeout = httpx.Timeout(90.0, connect=15.0)
+        remaining_prompts = scene_prompts[len(results):count]
+        async with httpx.AsyncClient(timeout=poll_timeout, follow_redirects=True, headers=headers) as client:
+            for idx, scene in enumerate(remaining_prompts):
+                img_bytes = None
+                base_seed = int(time.time() * 1000) % 1000000 + (idx * 337)
+                enc_scene = urllib.parse.quote(scene[:420])
 
-            if img_bytes:
-                results.append(img_bytes)
+                attempts = [("flux-realism", base_seed), ("flux", base_seed + 1), ("flux-pro", base_seed + 2), ("turbo", base_seed + 3)]
+                for model_name, seed in attempts:
+                    poll_url = f"https://image.pollinations.ai/prompt/{enc_scene}?width=1080&height=1080&seed={seed}&nologo=true&model={model_name}&enhance=true"
+                    try:
+                        res = await client.get(poll_url)
+                        if res.status_code == 200 and len(res.content) > 5000 and not res.content.startswith(b'{"error"'):
+                            img_bytes = await _apply_studio_polish(res.content)
+                            break
+                    except Exception as e:
+                        logger.debug(f"Pollinations model {model_name} note: {e}")
 
-            if len(results) >= count:
-                break
-            await asyncio.sleep(0.5)
+                if img_bytes:
+                    results.append(img_bytes)
+
+                if len(results) >= count:
+                    break
+                await asyncio.sleep(0.5)
 
     # 2. Fallback de Imagens Reais Exatamente Alinhadas ao Título/Tema
     if len(results) < count:
