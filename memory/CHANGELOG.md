@@ -1,5 +1,15 @@
 # CHANGELOG — CEO AI
 
+## 2026-09-04 — Regra Obrigatória e Fixa: Resolução 1K para Geração de Imagens
+- `backend/core.py`:
+  - Enforçada resolução exclusivamente 1K (`image_size="1K"`) no Gemini 3.1 Flash Lite (`gemini-3.1-flash-lite-image`).
+  - Proporções configuradas: 1:1 (1024x1024) padrão e 4:5 vertical para Instagram (928x1152 / aprox. 1024x1280).
+  - Bloqueio estrito de resolução: 2K, 4K ou superior nunca são solicitadas, mesmo que o prompt mencione "4K", "ultra HD" ou "alta resolução".
+  - Upscale automático após geração proibido: preserva fielmente os bytes nativos da API com o polish óptico.
+  - Fallback secundário (Pollinations) também fixado em dimensões 1K (1024x1024 / 1024x1280).
+- `backend/routers/marketing_pipeline.py` & `backend/routers/marketing.py`:
+  - Removidas referências a 4K e encaminhado o formato 4:5 vertical para posts em formato vertical/story/Instagram.
+
 ## 2026-08-17 — 3 imagens por post com seleção visual
 - `backend/core.py`
   - novo helper `generate_marketing_images(prompt, number_of_images)`

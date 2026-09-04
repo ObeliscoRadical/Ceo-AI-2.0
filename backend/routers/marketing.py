@@ -1189,11 +1189,13 @@ async def gen_post_image(inp: ImageIn, user: dict = Depends(premium_user)):
         company_name=ctx.get("name", "")
     )
     
+    asp = "4:5" if str(post.get("formato") or post.get("format") or "").lower() in ["vertical", "story", "stories", "reels", "post 4:5", "4:5"] else "1:1"
     images = await generate_marketing_images(
         prompt=visual_prompt or (scene_prompts[0] if scene_prompts else f"{titulo} {tema}"),
         scene_prompts=scene_prompts,
         number_of_images=3,
-        topic_query=f"{titulo} {tema}"
+        topic_query=f"{titulo} {tema}",
+        aspect_ratio=asp
     )
     logo = await db.brand_assets.find_one({"user_id": uid, "company_id": cid})
     urls = []

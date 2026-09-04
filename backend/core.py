@@ -232,7 +232,7 @@ async def gerar_prompt_imagem_do_post(post: Union[Dict[str, Any], str], brand_co
         "- Formato: sempre imagem quadrada (1:1), fotorrealista, pensada para ser compreendida em menos de 2 segundos de scroll no feed\n\n"
         "Regras fixas do prompt final:\n"
         "- Escreve sempre em português de Portugal\n"
-        "- Especifica: hiper-realista, fotográfico, iluminação cinematográfica, profundidade de campo rasa, ultra detalhado, 4K\n"
+        "- Especifica: hiper-realista, fotográfico, iluminação cinematográfica, profundidade de campo rasa, ultra detalhado, nitidez máxima em 1K\n"
         "- Indica sempre a paleta de cores da marca (usa a paleta fornecida no contexto da marca; se não houver marca definida, escolhe uma paleta coerente com o tom do post)\n"
         "- Por omissão, pede \"sem texto no ecrã, sem legendas, sem logótipos\" — EXCETO se um pequeno indicador textual (ex: um status tipo \"sistema estável\") reforçar diretamente o conceito central do post; nesse caso podes incluí-lo deliberadamente\n"
         "- Nunca ilustres o texto do post à letra (ex: se o post menciona \"349,99€\", não colocas esse número na imagem) — ilustra o SENTIMENTO e o CONCEITO, não as palavras\n\n"
@@ -271,7 +271,7 @@ async def gerar_prompt_imagem_do_post(post: Union[Dict[str, Any], str], brand_co
         
     return (
         "Cria uma imagem quadrada (1:1) hiper-realista, fotográfica, iluminação cinematográfica, "
-        "profundidade de campo rasa, ultra detalhado, 4K, ilustrando o estado de tranquilidade, precisão e controlo "
+        "profundidade de campo rasa, ultra detalhado, nitidez máxima em 1K, ilustrando o estado de tranquilidade, precisão e controlo "
         "num ambiente corporativo contemporâneo, sem texto no ecrã, sem logótipos."
     )
 
@@ -338,8 +338,22 @@ async def _apply_studio_polish(raw_bytes: bytes) -> bytes:
         logger.debug(f"Studio polish note: {e}")
         return raw_bytes
 
-async def generate_marketing_images(prompt: str = "", number_of_images: int = 3, scene_prompts: list[str] = None, topic_query: str = "") -> list[bytes]:
-    """Gera 1..N imagens com padrão de fotografia documental real (Zero aspeto de IA ou render 3D)."""
+async def generate_marketing_images(
+    prompt: str = "",
+    number_of_images: int = 3,
+    scene_prompts: list[str] = None,
+    topic_query: str = "",
+    aspect_ratio: str = "1:1"
+) -> list[bytes]:
+    """
+    Gera 1..N imagens com padrão de fotografia documental real (Zero aspeto de IA ou render 3D).
+    
+    REGRA SISTÉMICA FIXA E OBRIGATÓRIA:
+    - Resolução EXCLUSIVA em 1K (nunca 2K, 4K ou superior).
+    - Não aumentar resolução com base no prompt.
+    - Proporção: '1:1' (1024x1024) ou '4:5' vertical para Instagram (~1024x1280 / 928x1152).
+    - Sem upscale automático após geração.
+    """
     count = max(1, min(int(number_of_images or 3), 4))
     
     # Diretores fotográficos documentais (Canon EOS R5 / Leica M10 / 35mm film grain, sem jargão de IA)
@@ -349,6 +363,10 @@ async def generate_marketing_images(prompt: str = "", number_of_images: int = 3,
         "raw editorial documentary photo, shot on Sony A7R V with 85mm f/1.8 lens, natural ambient room light, shallow depth of field, unposed authentic professional interaction, real tactile materials, documentary aesthetic, strictly no 3D, no illustration, no airbrushing, no artificial smoothing, no text, no watermark"
     ]
     
+    # Resolver aspect ratio de destino: '4:5' para vertical/Instagram, ou '1:1' por padrão
+    asp_str = str(aspect_ratio or "1:1").strip().lower()
+    target_aspect = "4:5" if asp_str in ["4:5", "portrait", "vertical", "story", "stories", "reels", "post_vertical", "instagram_vertical"] else "1:1"
+
     if not scene_prompts:
         clean_p = prompt or "authentic entrepreneur managing daily operations in real contemporary workspace"
         scene_prompts = [
@@ -368,17 +386,34 @@ async def generate_marketing_images(prompt: str = "", number_of_images: int = 3,
     if gemini_img_key:
         try:
             from google import genai
+            from google.genai import types
+
             client_img = genai.Client(api_key=gemini_img_key)
+
+            # REGRA OBRIGATÓRIA — GERAÇÃO DE IMAGENS:
+            # Resolução padrão e obrigatória: 1K (image_size='1K')
+            # Nunca solicitar 2K, 4K ou superior.
+            # Mesmo com menção a '4K' ou 'alta resolução' no prompt, forçar estritamente 1K.
+            gemini_gen_config = types.GenerateContentConfig(
+                response_modalities=["TEXT", "IMAGE"],
+                image_config=types.ImageConfig(
+                    aspect_ratio=target_aspect,
+                    image_size="1K"  # REGRA FIXA E OBRIGATÓRIA: EXCLUSIVAMENTE 1K
+                )
+            )
+
             for idx, scene in enumerate(scene_prompts[:count]):
                 img_bytes = None
                 try:
                     res = client_img.models.generate_content(
                         model="gemini-3.1-flash-lite-image",
-                        contents=scene[:500]
+                        contents=scene[:500],
+                        config=gemini_gen_config
                     )
                     if res and res.candidates:
                         for part in res.candidates[0].content.parts:
                             if part.inline_data and part.inline_data.data:
+                                # Acabamento óptico sem qualquer alteração dimensional (zero upscale)
                                 img_bytes = await _apply_studio_polish(part.inline_data.data)
                                 break
                 except Exception as err_m:
@@ -391,11 +426,14 @@ async def generate_marketing_images(prompt: str = "", number_of_images: int = 3,
         except Exception as e_gemini:
             logger.warning(f"Erro ao inicializar cliente Gemini 3.1 Flash Lite: {e_gemini}")
 
-    # 2. Motor Secundário: Pollinations AI / Flux (caso necessário)
+    # 2. Motor Secundário: Pollinations AI / Flux (caso necessário) com estrita resolução 1K
     if len(results) < count:
         headers = {"User-Agent": "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36"}
         poll_timeout = httpx.Timeout(90.0, connect=15.0)
         remaining_prompts = scene_prompts[len(results):count]
+        # Dimensões 1K estritas: 1024x1024 para 1:1, ou 1024x1280 para 4:5 Instagram
+        poll_w = 1024
+        poll_h = 1280 if target_aspect == "4:5" else 1024
         async with httpx.AsyncClient(timeout=poll_timeout, follow_redirects=True, headers=headers) as client:
             for idx, scene in enumerate(remaining_prompts):
                 img_bytes = None
@@ -404,7 +442,7 @@ async def generate_marketing_images(prompt: str = "", number_of_images: int = 3,
 
                 attempts = [("flux-realism", base_seed), ("flux", base_seed + 1), ("flux-pro", base_seed + 2), ("turbo", base_seed + 3)]
                 for model_name, seed in attempts:
-                    poll_url = f"https://image.pollinations.ai/prompt/{enc_scene}?width=1080&height=1080&seed={seed}&nologo=true&model={model_name}&enhance=true"
+                    poll_url = f"https://image.pollinations.ai/prompt/{enc_scene}?width={poll_w}&height={poll_h}&seed={seed}&nologo=true&model={model_name}&enhance=true"
                     try:
                         res = await client.get(poll_url)
                         if res.status_code == 200 and len(res.content) > 5000 and not res.content.startswith(b'{"error"'):

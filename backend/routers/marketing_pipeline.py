@@ -691,11 +691,13 @@ Retorne em formato JSON:
                 company_name=company.get("name") or ""
             )
             topic_q = f"{prod.get('name', '')} {result.get('hook', '')}".strip() or "business commercial"
+            asp = "4:5" if str(format_type).lower() in ["vertical", "story", "stories", "reels", "post 4:5", "4:5"] else "1:1"
             raw_imgs = await generate_marketing_images(
                 prompt=visual_prompt or (scenes[0] if scenes else (result.get("visual_briefing") or "")),
                 number_of_images=2,
                 scene_prompts=scenes,
-                topic_query=topic_q
+                topic_query=topic_q,
+                aspect_ratio=asp
             )
             for img_data in raw_imgs:
                 if isinstance(img_data, bytes) and len(img_data) > 500:
@@ -910,7 +912,7 @@ Gere um post completo de alta qualidade e pronto a publicar em formato JSON:
         "caption": f"Na {company.get('name', 'nossa empresa')}, garantimos excelência e rigor em cada detalhe.\n\nSe procura segurança e cumprimento de prazos, fale connosco hoje mesmo.",
         "cta": "Envie mensagem privada para saber mais.",
         "hashtags": ["#empresas", "#qualidade", "#portugal"],
-        "visual_briefing": f"Professional workplace setting showing high quality {company.get('sector', 'business')} environment, cinematic lighting, ultra-detailed 4k.",
+        "visual_briefing": f"Professional workplace setting showing high quality {company.get('sector', 'business')} environment, cinematic lighting, ultra-detailed 1k texture.",
         "structure_breakdown": {"intro": "Gancho", "body": "Benefícios", "climax": "Confiança", "outro": "Contacto"}
     })
     
@@ -932,7 +934,7 @@ Gere um post completo de alta qualidade e pronto a publicar em formato JSON:
                     "colors": company.get("brand_colors") or company.get("colors")
                 }
             )
-            scenes = await generate_post_visual_scenes(
+            scenes = [visual_prompt] if visual_prompt else await generate_post_visual_scenes(
                 titulo=result.get("title") or "Post Profissional",
                 legenda=result.get("caption") or "",
                 hook=result.get("hook") or "",
@@ -941,11 +943,13 @@ Gere um post completo de alta qualidade e pronto a publicar em formato JSON:
                 company_name=company.get("name") or ""
             )
             topic_q = f"{prod.get('name', '')} {result.get('hook', '')}".strip() or "business commercial"
+            asp = "4:5" if (str(format_type).lower() in ["vertical", "story", "stories", "reels", "post 4:5", "4:5"] or str(payload.get("aspect_ratio", "")).lower() in ["4:5", "vertical", "portrait"]) else "1:1"
             raw_imgs = await generate_marketing_images(
                 prompt=visual_prompt or (scenes[0] if scenes else (result.get("visual_briefing") or "")),
                 number_of_images=2,
                 scene_prompts=scenes,
-                topic_query=topic_q
+                topic_query=topic_q,
+                aspect_ratio=asp
             )
             for img_data in raw_imgs:
                 if isinstance(img_data, bytes) and len(img_data) > 500:
@@ -1009,11 +1013,13 @@ async def generate_single_studio_image(payload: Dict[str, Any], user: dict = Dep
         )
         scenes = [visual_prompt] if visual_prompt else [prompt or "Post Profissional"]
         topic_q = f"{product_name} {hook}".strip() or "business professional"
+        asp = "4:5" if (str(payload.get("aspect_ratio", "")).lower() in ["4:5", "vertical", "portrait"] or str(payload.get("format", "")).lower() in ["vertical", "story", "stories", "reels", "post 4:5", "4:5"]) else "1:1"
         raw_imgs = await generate_marketing_images(
             prompt=visual_prompt or prompt,
             number_of_images=1,
             scene_prompts=scenes,
-            topic_query=topic_q
+            topic_query=topic_q,
+            aspect_ratio=asp
         )
         if raw_imgs and len(raw_imgs[0]) > 500:
             fname = f"studio_img_{uuid.uuid4().hex[:12]}.png"
@@ -1236,11 +1242,13 @@ async def generate_all_pool_images(payload: Optional[Dict[str, Any]] = None, use
                 }
             )
             scenes = [visual_prompt] if visual_prompt else [prompt or "Post Profissional"]
+            asp = "4:5" if (str(item.get("format", "")).lower() in ["vertical", "story", "stories", "reels", "post 4:5", "4:5"] or str(item.get("aspect_ratio", "")).lower() in ["4:5", "vertical", "portrait"]) else "1:1"
             raw_imgs = await generate_marketing_images(
                 prompt=visual_prompt or (scenes[0] if scenes else prompt),
                 number_of_images=1,
                 scene_prompts=scenes,
-                topic_query=f"{product_name} {hook}".strip() or "business professional"
+                topic_query=f"{product_name} {hook}".strip() or "business professional",
+                aspect_ratio=asp
             )
             if raw_imgs and len(raw_imgs[0]) > 500:
                 fname = f"pool_batch_{uuid.uuid4().hex[:12]}.png"

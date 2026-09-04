@@ -13,6 +13,13 @@ Também pediu a configuração real da integração Meta para deixar de depender
 - Prioridade atual neste fork: **métricas Meta em produção**
 - Estado reportado pelo utilizador: **já testou em produção e ainda falha**
 - Informação adicional confirmada pelo utilizador: já tem as permissões **`instagram_manage_insights`** e **`read_insights`** ativadas
+- **REGRA FIXA E OBRIGATÓRIA DO SISTEMA — GERAÇÃO DE IMAGENS:**
+  - Modelo exclusivo: **Gemini 3.1 Flash Lite / Nano Banana 2 Lite** (`gemini-3.1-flash-lite-image`) utilizando a chave paga `GEMINI_IMAGE_API_KEY`.
+  - Resolução: **EXCLUSIVAMENTE 1K** (`image_size="1K"`).
+  - Proibições estritas: Nunca solicitar 2K, 4K ou superior; nunca aumentar resolução com base no prompt do utilizador; manter 1K mesmo com menções a 4K ou alta resolução no texto; PROIBIDO fazer upscale automático após a geração.
+  - Proporções: 1:1 quadrado padrão (1024x1024) ou 4:5 vertical para Instagram (~1024x1280 / 928x1152).
+  - Prioridade: Minimizar custo da API mantendo máximo fotorrealismo e qualidade visual em 1K.
+  - Regra permanente: Só pode ser alterada mediante instrução explícita do utilizador.
 
 ## Objetivos de produto
 - Manter a separação total entre Growth Agent e Social Media Agent
