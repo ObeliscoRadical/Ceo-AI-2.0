@@ -124,6 +124,21 @@ export default function Marketing() {
     loadAllData();
   }, []);
 
+  useEffect(() => {
+    const params = new URLSearchParams(location.search);
+    const tabParam = params.get("tab");
+    if (tabParam && TABS.some(t => t.id === tabParam)) {
+      setActiveTab(tabParam);
+    } else if (
+      params.get("social_pending") ||
+      params.get("social_error") ||
+      params.get("connected") ||
+      location.hash === "#marketing-agent-social"
+    ) {
+      setActiveTab("conexoes");
+    }
+  }, [location.search, location.hash]);
+
   // Handlers de Interconexão entre Módulos
   const handleSelectProductForCampaign = (product) => {
     setActiveTab("campanhas");

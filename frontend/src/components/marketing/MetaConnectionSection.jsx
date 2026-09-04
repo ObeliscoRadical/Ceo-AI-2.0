@@ -39,6 +39,7 @@ const STATE_META = {
 export const MetaConnectionSection = ({ api, onRefreshAll }) => {
   const [loading, setLoading] = useState(true);
   const [data, setData] = useState({ configured: false, connected: false, checks: [], available_pages: [] });
+  const [urlError, setUrlError] = useState(null);
   const [connectingDev, setConnectingDev] = useState(false);
   const [savingConfig, setSavingConfig] = useState(false);
   const [diagnosticsBusy, setDiagnosticsBusy] = useState(false);
@@ -76,7 +77,11 @@ export const MetaConnectionSection = ({ api, onRefreshAll }) => {
         api.get("/social/jobs").catch(() => ({ data: { jobs: [] } })),
         api.get("/social/published-history").catch(() => ({ data: { posts: [] } }))
       ]);
-      setData(resStatus.data || {});
+      const statusData = resStatus.data || {};
+      setData(statusData);
+      if (statusData.pending_selection || (statusData.available_pages && statusData.available_pages.length > 0)) {
+        setShowPagesSelector(true);
+      }
       setJobs(resJobs.data?.jobs || []);
       setPublishedPosts(resHist.data?.posts || []);
     } catch (e) {
@@ -88,6 +93,20 @@ export const MetaConnectionSection = ({ api, onRefreshAll }) => {
 
   useEffect(() => {
     loadStatus();
+    const params = new URLSearchParams(window.location.search);
+    const err = params.get("social_error");
+    if (err) {
+      const msg = decodeURIComponent(err);
+      setUrlError(msg);
+      toast.error(`Atenção: ${msg}`, { duration: 10000 });
+    }
+    if (params.get("social_pending")) {
+      setShowPagesSelector(true);
+      toast.info("Selecione a página e conta do Instagram que deseja ativar nesta empresa.");
+    }
+    if (params.get("connected")) {
+      toast.success("Conta Meta conectada com sucesso!");
+    }
   }, []);
 
   const handleConnectOAuth = async () => {
@@ -272,6 +291,30 @@ export const MetaConnectionSection = ({ api, onRefreshAll }) => {
 
   return (
     <div className="space-y-6">
+      {/* Alerta de Retorno do OAuth / Erro de Troca de Código */}
+      {urlError && (
+        <div className="p-4 rounded-2xl border border-red-500/30 bg-red-500/10 flex items-start justify-between gap-3 text-xs text-red-200">
+          <div className="flex items-start gap-2.5">
+            <AlertTriangle className="w-5 h-5 text-red-400 shrink-0 mt-0.5" />
+            <div>
+              <strong className="block text-sm font-bold text-red-300 mb-1">
+                Aviso sobre a Conexão Meta:
+              </strong>
+              <p className="text-red-200/90 leading-relaxed font-mono">{urlError}</p>
+              <p className="mt-2 text-slate-400">
+                Se as credenciais da Meta App precisarem de ser sincronizadas ou renovadas, utilize o botão Conectar Meta abaixo.
+              </p>
+            </div>
+          </div>
+          <button
+            onClick={() => setUrlError(null)}
+            className="p-1 rounded-lg hover:bg-white/10 text-slate-400 hover:text-white"
+          >
+            <X className="w-4 h-4" />
+          </button>
+        </div>
+      )}
+
       {/* SELETOR PRINCIPAL DE REDES SOCIAIS */}
       <div className="flex items-center gap-2 p-1.5 rounded-2xl bg-black/40 border border-white/10 flex-wrap">
         <button

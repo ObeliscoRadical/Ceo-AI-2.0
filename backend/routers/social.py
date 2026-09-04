@@ -1261,14 +1261,16 @@ async def social_callback(code: Optional[str] = None, state: Optional[str] = Non
         return RedirectResponse(f"{base}/marketing?social_error=estado_invalido")
     uid = st["user_id"]
     cid = st.get("company_id") or await active_company_id(uid)
+    await _ensure_meta_runtime_config()
     aid, sec = _cfg()
     try:
         async with httpx.AsyncClient(timeout=90) as client:
             short = (await client.get(_graph("oauth/access_token"), params={
                 "client_id": aid, "client_secret": sec, "redirect_uri": _redirect_uri(), "code": code})).json()
             if "access_token" not in short:
-                logger.error(f"social oauth short: {short}")
-                return RedirectResponse(f"{base}/marketing?social_error=troca_codigo")
+                logger.error(f"social oauth short error: {short} | aid={aid} | sec_present={bool(sec)}")
+                err_detail = (short.get("error") or {}).get("message") or short.get("error_description") or f"troca_codigo: {short}"
+                return RedirectResponse(f"{base}/marketing?social_error={quote(str(err_detail))}&tab=conexoes")
             user_short = short["access_token"]
             longt = (await client.get(_graph("oauth/access_token"), params={
                 "grant_type": "fb_exchange_token", "client_id": aid, "client_secret": sec,
@@ -1279,7 +1281,7 @@ async def social_callback(code: Optional[str] = None, state: Optional[str] = Non
                 "fields": "id,name,access_token,tasks,instagram_business_account"})).json()
         data = pages.get("data", [])
         if not data:
-            return RedirectResponse(f"{base}/marketing?social_error=sem_pagina")
+            return RedirectResponse(f"{base}/marketing?social_error=sem_pagina&tab=conexoes")
         token_debug = await _fetch_token_debug(user_token)
         if not token_debug.get("token_expires_at") and longt.get("expires_in"):
             token_debug["token_expires_at"] = (datetime.now(timezone.utc) + timedelta(seconds=int(longt.get("expires_in") or 0))).isoformat()
@@ -1290,7 +1292,7 @@ async def social_callback(code: Optional[str] = None, state: Optional[str] = Non
             await _finalize_connection(uid, cid, None, candidates[0], user_token, token_debug)
             fresh = await _find_connection(uid, cid)
             await _refresh_connection_runtime_state(uid, cid, aid, sec, fresh, force=True)
-            return RedirectResponse(f"{base}/marketing?connected=1")
+            return RedirectResponse(f"{base}/marketing?connected=1&tab=conexoes")
         await db.social_connections.update_one({"user_id": uid, "company_id": cid}, {"$set": {
             "user_id": uid,
             "company_id": cid,
@@ -1315,10 +1317,10 @@ async def social_callback(code: Optional[str] = None, state: Optional[str] = Non
             "insights_probe_detail": None,
             "last_diagnostics": {"checks": _base_checks(aid, sec, {"status": "pending_selection", "candidate_pages": candidates, "insights_status": "unverified", "report_source": "mock"})},
             "updated_at": datetime.now(timezone.utc).isoformat()}}, upsert=True)
-        return RedirectResponse(f"{base}/marketing?social_pending=1")
+        return RedirectResponse(f"{base}/marketing?social_pending=1&tab=conexoes")
     except Exception as e:
-        logger.error(f"social oauth callback: {e}")
-        return RedirectResponse(f"{base}/marketing?social_error=falha_oauth")
+        logger.error(f"social oauth callback exception: {e}")
+        return RedirectResponse(f"{base}/marketing?social_error={quote(str(e))}&tab=conexoes")
 
 
 class SelectPageIn(BaseModel):
@@ -1327,6 +1329,7 @@ class SelectPageIn(BaseModel):
 
 @router.post("/social/select-page")
 async def social_select_page(inp: SelectPageIn, user: dict = Depends(premium_user)):
+    await _ensure_meta_runtime_config()
     cid = await active_company_id(user["id"])
     conn = await _find_connection(user["id"], cid)
     if not conn:
