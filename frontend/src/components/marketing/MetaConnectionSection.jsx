@@ -44,6 +44,9 @@ export const MetaConnectionSection = ({ api, onRefreshAll }) => {
   const [diagnosticsBusy, setDiagnosticsBusy] = useState(false);
   const [disconnecting, setDisconnecting] = useState(false);
   const [showReconfig, setShowReconfig] = useState(false);
+  const [selectingPage, setSelectingPage] = useState(null);
+  const [showPagesSelector, setShowPagesSelector] = useState(false);
+  const [copiedRedirect, setCopiedRedirect] = useState(false);
   const [activeMode, setActiveMode] = useState("oauth"); // "oauth" | "token" | "config"
   const [networkTab, setNetworkTab] = useState("all"); // "all" | "meta" | "tiktok" | "queue"
 
@@ -96,6 +99,29 @@ export const MetaConnectionSection = ({ api, onRefreshAll }) => {
     } catch (e) {
       toast.error(e.response?.data?.detail || "Erro ao iniciar OAuth da Meta.");
     }
+  };
+
+  const handleSelectPage = async (pageId) => {
+    setSelectingPage(pageId);
+    try {
+      await api.post("/social/select-page", { page_id: pageId });
+      toast.success("Conta Meta e Instagram ativadas nesta empresa com sucesso!");
+      setShowPagesSelector(false);
+      await loadStatus();
+      if (onRefreshAll) onRefreshAll();
+    } catch (e) {
+      toast.error(e.response?.data?.detail || "Erro ao selecionar página.");
+    } finally {
+      setSelectingPage(null);
+    }
+  };
+
+  const copyRedirectUri = () => {
+    const uri = data.redirect_uri || `${window.location.origin}/api/social/callback`;
+    navigator.clipboard.writeText(uri);
+    setCopiedRedirect(true);
+    toast.success("URL de redirecionamento copiada!");
+    setTimeout(() => setCopiedRedirect(false), 3000);
   };
 
   const handleConnectDeveloper = async () => {
@@ -350,6 +376,17 @@ export const MetaConnectionSection = ({ api, onRefreshAll }) => {
             </Button>
             {data.connected && (
               <>
+                {data.available_pages && data.available_pages.length > 1 && (
+                  <Button
+                    onClick={() => setShowPagesSelector(!showPagesSelector)}
+                    variant="outline"
+                    size="sm"
+                    className="rounded-xl border-amber-500/40 text-amber-300 hover:bg-amber-500/10 shadow-sm"
+                  >
+                    <Facebook className="w-3.5 h-3.5 mr-1.5 text-blue-400" />
+                    Alternar Conta ({data.available_pages.length})
+                  </Button>
+                )}
                 <Button onClick={() => setShowReconfig(!showReconfig)} variant="outline" size="sm" className="rounded-xl border-white/15 text-slate-300 hover:bg-white/10">
                   <Settings2 className="w-4 h-4 mr-1.5 text-pink-400" />
                   {showReconfig ? "Ocultar Formulário" : "Trocar Token / Reconfigurar"}
@@ -363,6 +400,101 @@ export const MetaConnectionSection = ({ api, onRefreshAll }) => {
           </div>
         </div>
       </div>
+
+      {/* SELETOR DE CONTAS META DETECTADAS */}
+      {(data.pending_selection || showPagesSelector || (data.available_pages && data.available_pages.length > 1 && !data.connected)) && (
+        <div className="p-6 rounded-2xl border border-amber-500/40 bg-amber-500/10 space-y-4 relative overflow-hidden">
+          <div className="flex items-start justify-between gap-3 flex-wrap">
+            <div>
+              <div className="flex items-center gap-2">
+                <Facebook className="w-5 h-5 text-blue-400" />
+                <Instagram className="w-5 h-5 text-pink-400" />
+                <h4 className="font-bold text-white text-base">
+                  {data.pending_selection
+                    ? "Selecione a Conta / Página para este Login"
+                    : "Contas Disponíveis na sua Conta Meta"}
+                </h4>
+                <span className="text-xs px-2.5 py-0.5 rounded-full bg-amber-500/20 text-amber-300 font-semibold border border-amber-500/30">
+                  {data.available_pages?.length || 0} contas encontradas
+                </span>
+              </div>
+              <p className="text-xs text-slate-300 mt-1">
+                A sua conta Meta possui acesso a múltiplas páginas. Escolha abaixo qual conta deseja vincular à empresa atual:
+              </p>
+            </div>
+            {showPagesSelector && !data.pending_selection && (
+              <button
+                onClick={() => setShowPagesSelector(false)}
+                className="text-slate-400 hover:text-white p-1 rounded-lg hover:bg-white/10 transition-colors"
+              >
+                <X className="w-4 h-4" />
+              </button>
+            )}
+          </div>
+
+          <div className="grid sm:grid-cols-2 gap-3 pt-2">
+            {(data.available_pages || []).map((page) => {
+              const isCurrent = data.connected && data.page_name === page.page_name;
+              const isBusy = selectingPage === page.page_id;
+
+              return (
+                <div
+                  key={page.page_id}
+                  className={`p-4 rounded-xl border transition-all ${
+                    isCurrent
+                      ? "border-emerald-500/50 bg-emerald-500/15 shadow-lg shadow-emerald-500/10"
+                      : "border-white/10 bg-black/50 hover:border-white/20 hover:bg-white/[0.04]"
+                  }`}
+                >
+                  <div className="flex items-start justify-between gap-2">
+                    <div className="space-y-1">
+                      <div className="flex items-center gap-1.5">
+                        <Facebook className="w-4 h-4 text-blue-400 shrink-0" />
+                        <span className="font-bold text-sm text-white">{page.page_name}</span>
+                      </div>
+                      <div className="flex items-center gap-1.5 text-xs text-slate-300">
+                        <Instagram className="w-3.5 h-3.5 text-pink-400 shrink-0" />
+                        <span>{page.ig_username ? `@${page.ig_username}` : "Sem Instagram vinculado"}</span>
+                      </div>
+                    </div>
+
+                    {isCurrent && (
+                      <span className="text-[10px] font-bold uppercase tracking-wider text-emerald-300 bg-emerald-500/20 border border-emerald-500/30 px-2 py-0.5 rounded-full shrink-0">
+                        Ativa
+                      </span>
+                    )}
+                  </div>
+
+                  <div className="mt-4 pt-3 border-t border-white/10 flex items-center justify-between gap-2">
+                    <span className="text-[11px] text-slate-400">
+                      {page.publish_ready ? "✓ Publicação Pronta" : "Acesso leitura"}
+                    </span>
+
+                    <Button
+                      onClick={() => handleSelectPage(page.page_id)}
+                      disabled={isBusy || isCurrent}
+                      size="sm"
+                      className={`rounded-xl text-xs font-bold px-3 py-1.5 h-8 ${
+                        isCurrent
+                          ? "bg-white/10 text-slate-400 cursor-default"
+                          : "bg-gradient-to-r from-blue-600 to-pink-600 hover:from-blue-500 hover:to-pink-500 text-white shadow-md"
+                      }`}
+                    >
+                      {isBusy ? (
+                        <Loader2 className="w-3.5 h-3.5 animate-spin mr-1" />
+                      ) : isCurrent ? (
+                        "Conectada"
+                      ) : (
+                        "Ativar nesta Empresa"
+                      )}
+                    </Button>
+                  </div>
+                </div>
+              );
+            })}
+          </div>
+        </div>
+      )}
 
       {/* 2. FORMULÁRIO DE RECONFIGURAÇÃO / CONEXÃO (CONDICIONAL) */}
       {(!data.connected || showReconfig) && (
@@ -404,11 +536,32 @@ export const MetaConnectionSection = ({ api, onRefreshAll }) => {
             <div className="space-y-4">
               <div className="p-4 rounded-xl border border-blue-500/20 bg-blue-500/5 space-y-2">
                 <span className="text-xs font-bold text-blue-300 flex items-center gap-1.5">
-                  <Facebook className="w-4 h-4" /> Fluxo Oficial de Login com o Facebook
+                  <Facebook className="w-4 h-4" /> Fluxo Oficial de Login com o Facebook & Instagram
                 </span>
-                <p className="text-xs text-slate-300">
-                  Clique no botão abaixo para abrir a janela da Meta. Inicie sessão com a sua conta e autorize a Página <strong>ObeliscoLabs</strong> e o Instagram. O sistema faz a ligação automática de tudo sem precisar de colar tokens manuais.
+                <p className="text-xs text-slate-300 leading-relaxed">
+                  Clique no botão abaixo para abrir a janela da Meta. Inicie sessão com a sua conta Meta e selecione as Páginas e Contas de Instagram desejadas. Se tiver várias contas (ex: Obelisco Radical e Obelisco Labs), o sistema permitirá escolher qual deseja ativar para este utilizador/empresa.
                 </p>
+              </div>
+
+              {/* URL DE REDIRECIONAMENTO PARA CONFIGURAR NA META */}
+              <div className="p-3.5 rounded-xl border border-white/10 bg-black/40 flex items-center justify-between gap-3 flex-wrap">
+                <div className="space-y-0.5 min-w-[240px]">
+                  <span className="text-[10px] uppercase font-bold text-slate-400 flex items-center gap-1">
+                    <Link2 className="w-3 h-3 text-cyan-400" /> URI Válido de Redirecionamento (OAuth na Meta)
+                  </span>
+                  <p className="text-xs font-mono text-cyan-300 select-all">
+                    {data.redirect_uri || `${window.location.origin}/api/social/callback`}
+                  </p>
+                </div>
+                <Button
+                  onClick={copyRedirectUri}
+                  variant="outline"
+                  size="sm"
+                  className="rounded-lg text-xs h-7 border-white/15 text-slate-200 hover:bg-white/10 shrink-0"
+                >
+                  {copiedRedirect ? <CheckCircle2 className="w-3 h-3 mr-1 text-emerald-400" /> : <Link2 className="w-3 h-3 mr-1" />}
+                  {copiedRedirect ? "Copiado!" : "Copiar URI"}
+                </Button>
               </div>
 
               {!data.configured && (

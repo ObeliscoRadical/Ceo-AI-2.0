@@ -696,7 +696,7 @@ async def _finalize_connection(uid: str, cid: Optional[str], current: Optional[d
             "insights_last_checked_at": None,
             "insights_probe_source": None,
             "insights_probe_detail": None,
-            "candidate_pages": [],
+            "candidate_pages": (current or {}).get("candidate_pages") or ([chosen] if chosen else []),
             "last_diagnostics": {"checks": _base_checks(*_cfg(), {**(current or {}), **chosen, **token_debug, "status": "connected", "insights_status": "unverified", "report_source": "mock"})},
             "updated_at": datetime.now(timezone.utc).isoformat(),
         }},
@@ -1235,7 +1235,13 @@ async def social_connect(user: dict = Depends(premium_user)):
         "created_at": datetime.now(timezone.utc).isoformat(),
         "expires_at": datetime.now(timezone.utc) + timedelta(minutes=10),
     })
-    q = {"client_id": aid, "redirect_uri": _redirect_uri(), "state": state, "response_type": "code"}
+    q = {
+        "client_id": aid,
+        "redirect_uri": _redirect_uri(),
+        "state": state,
+        "response_type": "code",
+        "auth_type": "rerequest",
+    }
     if _meta_config_id():
         q["config_id"] = _meta_config_id()
         q["override_default_response_type"] = "true"
@@ -1323,9 +1329,11 @@ class SelectPageIn(BaseModel):
 async def social_select_page(inp: SelectPageIn, user: dict = Depends(premium_user)):
     cid = await active_company_id(user["id"])
     conn = await _find_connection(user["id"], cid)
-    if not conn or _conn_state(conn) != "pending_selection":
-        raise HTTPException(400, "Não existe uma escolha de página pendente.")
+    if not conn:
+        raise HTTPException(400, "Não existe uma conexão Meta ativa ou pendente.")
     candidates = conn.get("candidate_pages") or []
+    if not candidates:
+        raise HTTPException(400, "Nenhuma página disponível para seleção na sessão atual.")
     chosen = next((item for item in candidates if item.get("page_id") == inp.page_id), None)
     if not chosen:
         raise HTTPException(404, "Página não encontrada na sessão Meta atual.")
