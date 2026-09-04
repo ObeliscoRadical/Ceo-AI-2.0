@@ -363,7 +363,7 @@ async def generate_marketing_images(prompt: str = "", number_of_images: int = 3,
     
     results = []
 
-    # 1. Motor Primário: Chave PAGA exclusiva do Gemini para Imagens (gemini-2.5-flash-image / Nano Banana)
+    # 1. Motor Exclusivo: Gemini 3.1 Flash Lite (Nano Banana 2 Lite 🍌) com Chave PAGA
     gemini_img_key = os.environ.get("GEMINI_IMAGE_API_KEY")
     if gemini_img_key:
         try:
@@ -371,28 +371,25 @@ async def generate_marketing_images(prompt: str = "", number_of_images: int = 3,
             client_img = genai.Client(api_key=gemini_img_key)
             for idx, scene in enumerate(scene_prompts[:count]):
                 img_bytes = None
-                for model_name in ["gemini-2.5-flash-image", "gemini-3.1-flash-image", "gemini-3-pro-image"]:
-                    try:
-                        res = client_img.models.generate_content(
-                            model=model_name,
-                            contents=scene[:500]
-                        )
-                        if res and res.candidates:
-                            for part in res.candidates[0].content.parts:
-                                if part.inline_data and part.inline_data.data:
-                                    img_bytes = await _apply_studio_polish(part.inline_data.data)
-                                    break
-                        if img_bytes:
-                            break
-                    except Exception as err_m:
-                        logger.debug(f"Gemini image model {model_name} note: {err_m}")
-                        
+                try:
+                    res = client_img.models.generate_content(
+                        model="gemini-3.1-flash-lite-image",
+                        contents=scene[:500]
+                    )
+                    if res and res.candidates:
+                        for part in res.candidates[0].content.parts:
+                            if part.inline_data and part.inline_data.data:
+                                img_bytes = await _apply_studio_polish(part.inline_data.data)
+                                break
+                except Exception as err_m:
+                    logger.error(f"Erro no Gemini 3.1 Flash Lite (Nano Banana 2 Lite): {err_m}")
+                    
                 if img_bytes:
                     results.append(img_bytes)
                 if len(results) >= count:
                     break
         except Exception as e_gemini:
-            logger.warning(f"Erro ao gerar com chave paga do Gemini para imagens: {e_gemini}")
+            logger.warning(f"Erro ao inicializar cliente Gemini 3.1 Flash Lite: {e_gemini}")
 
     # 2. Motor Secundário: Pollinations AI / Flux (caso necessário)
     if len(results) < count:
