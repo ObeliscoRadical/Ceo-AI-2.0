@@ -1,42 +1,59 @@
-import { useState } from "react";
+import { useState, useRef } from "react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Textarea } from "@/components/ui/textarea";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter } from "@/components/ui/dialog";
-import { Store, Plus, Sparkles, Loader2, Edit, Trash2, Tag, ArrowUpRight, Layers, Target, CheckCircle2 } from "lucide-react";
+import { 
+  Store, Plus, Sparkles, Loader2, Edit, Trash2, ArrowUpRight, 
+  CheckCircle2, Image as ImageIcon, Upload, Wand2, X, Palette 
+} from "lucide-react";
 import { toast } from "sonner";
 
-export const VitrineSection = ({ products = [], onRefresh, onSelectForCampaign, api }) => {
+export const VitrineSection = ({ 
+  products = [], 
+  onRefresh, 
+  onSelectForCampaign, 
+  onOpenStudioWithProduct, 
+  api 
+}) => {
   const [modalOpen, setModalOpen] = useState(false);
   const [saving, setSaving] = useState(false);
   const [enhancing, setEnhancing] = useState(false);
+  const [uploadingImage, setUploadingImage] = useState(false);
+  const [generatingConcept, setGeneratingConcept] = useState(false);
   const [editingProduct, setEditingProduct] = useState(null);
 
+  const fileInputRef = useRef(null);
+
   const [name, setName] = useState("");
-  const [category, setCategory] = useState("Serviço");
+  const [category, setCategory] = useState("Produto");
   const [price, setPrice] = useState("");
   const [pricingModel, setPricingModel] = useState("Fixo");
   const [description, setDescription] = useState("");
+  const [imageUrl, setImageUrl] = useState("");
+  const [visualDetails, setVisualDetails] = useState("");
   const [targetAudience, setTargetAudience] = useState("");
   const [mainPain, setMainPain] = useState("");
   const [valueProp, setValueProp] = useState("");
   const [offer, setOffer] = useState("");
-  const [cta, setCta] = useState("Pedir Orçamento");
+  const [cta, setCta] = useState("Comprar Agora");
   const [positioning, setPositioning] = useState("");
 
   const openNew = () => {
     setEditingProduct(null);
     setName("");
-    setCategory("Serviço");
+    setCategory("Produto");
     setPrice("");
     setPricingModel("Fixo");
     setDescription("");
+    setImageUrl("");
+    setVisualDetails("");
     setTargetAudience("");
     setMainPain("");
     setValueProp("");
     setOffer("");
-    setCta("Pedir Orçamento");
+    setCta("Comprar Agora");
     setPositioning("");
     setModalOpen(true);
   };
@@ -44,17 +61,65 @@ export const VitrineSection = ({ products = [], onRefresh, onSelectForCampaign, 
   const openEdit = (p) => {
     setEditingProduct(p);
     setName(p.name || "");
-    setCategory(p.category || "Serviço");
-    setPrice(p.price || "");
+    setCategory(p.category || "Produto");
+    setPrice(p.price !== undefined && p.price !== null ? p.price : "");
     setPricingModel(p.pricing_model || "Fixo");
     setDescription(p.description || "");
+    setImageUrl(p.image_url || (p.images && p.images[0]) || "");
+    setVisualDetails(p.visual_details || "");
     setTargetAudience(p.target_audience || "");
     setMainPain(p.main_pain || "");
     setValueProp(p.value_prop || "");
     setOffer(p.offer || "");
-    setCta(p.cta || "Pedir Orçamento");
+    setCta(p.cta || "Comprar Agora");
     setPositioning(p.positioning || "");
     setModalOpen(true);
+  };
+
+  const handleUploadImage = async (e) => {
+    const file = e.target.files?.[0];
+    if (!file) return;
+    setUploadingImage(true);
+    try {
+      const formData = new FormData();
+      formData.append("file", file);
+      const res = await api.post("/marketing/products/upload-image", formData, {
+        headers: { "Content-Type": "multipart/form-data" }
+      });
+      if (res.data?.image_url) {
+        setImageUrl(res.data.image_url);
+        toast.success("Foto real do produto carregada e persistida com sucesso!");
+      }
+    } catch (err) {
+      toast.error(err.response?.data?.detail || "Erro ao carregar foto do produto.");
+    } finally {
+      setUploadingImage(false);
+      if (fileInputRef.current) fileInputRef.current.value = "";
+    }
+  };
+
+  const handleGenerateConcept = async () => {
+    if (!name.trim()) {
+      toast.error("Indique pelo menos o nome do produto para gerar o conceito visual.");
+      return;
+    }
+    setGeneratingConcept(true);
+    try {
+      const res = await api.post("/marketing/products/generate-concept-image", {
+        name,
+        category,
+        visual_details: visualDetails || description,
+        description
+      });
+      if (res.data?.image_url) {
+        setImageUrl(res.data.image_url);
+        toast.success("Conceito comercial 1K gerado com sucesso pela IA!");
+      }
+    } catch (err) {
+      toast.error(err.response?.data?.detail || "Erro ao gerar conceito visual com IA.");
+    } finally {
+      setGeneratingConcept(false);
+    }
   };
 
   const handleAiEnhance = async () => {
@@ -99,6 +164,9 @@ export const VitrineSection = ({ products = [], onRefresh, onSelectForCampaign, 
         price: parseFloat(price) || 0,
         pricing_model: pricingModel,
         description,
+        image_url: imageUrl || null,
+        images: imageUrl ? [imageUrl] : [],
+        visual_details: visualDetails || "",
         target_audience: targetAudience,
         main_pain: mainPain,
         value_prop: valueProp,
@@ -147,11 +215,11 @@ export const VitrineSection = ({ products = [], onRefresh, onSelectForCampaign, 
             <h2 className="text-xl font-bold tracking-tight text-white">Vitrine & Centro Comercial</h2>
           </div>
           <p className="text-sm text-slate-400 mt-1">
-            Catálogo central de produtos, serviços e ofertas. Todos os módulos de marketing reutilizam estes dados.
+            Catálogo central de produtos físicos, obras e serviços. As fotos reais e conceitos 1K alimentam o Studio e as Campanhas.
           </p>
         </div>
         <Button onClick={openNew} className="rounded-xl bg-blue-600 hover:bg-blue-500 text-white font-medium shadow-lg shadow-blue-500/20">
-          <Plus className="w-4 h-4 mr-2" /> Novo Produto / Serviço
+          <Plus className="w-4 h-4 mr-2" /> Novo Produto / Domus
         </Button>
       </div>
 
@@ -161,7 +229,7 @@ export const VitrineSection = ({ products = [], onRefresh, onSelectForCampaign, 
           <Store className="w-12 h-12 text-slate-600 mx-auto mb-4" />
           <h3 className="text-base font-semibold text-white">A sua Vitrine ainda está vazia</h3>
           <p className="text-sm text-slate-400 max-w-md mx-auto mt-2">
-            Adicione os seus produtos ou serviços principais para alimentar o Criador de Campanhas, o Studio e o Autopilot.
+            Adicione os seus produtos reais (ex: Domus, equipamentos ou itens físicos) com fotos e detalhes visuais para criar criativos fotorealistas no Studio.
           </p>
           <Button onClick={openNew} variant="outline" className="mt-6 rounded-xl border-white/10 text-white hover:bg-white/5">
             <Plus className="w-4 h-4 mr-2" /> Criar Primeiro Produto
@@ -169,74 +237,131 @@ export const VitrineSection = ({ products = [], onRefresh, onSelectForCampaign, 
         </div>
       ) : (
         <div className="grid md:grid-cols-2 xl:grid-cols-3 gap-5">
-          {products.map((p) => (
-            <div key={p.id} className="rounded-2xl border border-white/10 bg-gradient-to-b from-white/[0.04] to-black/20 p-5 flex flex-col justify-between hover:border-blue-500/30 transition-all duration-300 group shadow-lg">
-              <div>
-                <div className="flex items-start justify-between gap-3 mb-3">
-                  <span className="px-2.5 py-1 rounded-full text-[11px] font-semibold tracking-wider uppercase bg-blue-500/10 text-blue-300 border border-blue-500/20">
-                    {p.category || "Serviço"}
-                  </span>
-                  <div className="text-right">
-                    <span className="text-lg font-bold text-white">
-                      {p.price ? `${p.price} €` : "Sob Orçamento"}
-                    </span>
-                    <p className="text-[11px] text-slate-400">{p.pricing_model || "Fixo"}</p>
+          {products.map((p) => {
+            const hasImage = Boolean(p.image_url || (p.images && p.images.length > 0));
+            const displayImg = p.image_url || (p.images && p.images[0]);
+
+            return (
+              <div 
+                key={p.id} 
+                className="rounded-2xl border border-white/10 bg-gradient-to-b from-white/[0.04] to-black/30 p-5 flex flex-col justify-between hover:border-blue-500/40 transition-all duration-300 group shadow-lg"
+              >
+                <div>
+                  {/* Foto Real / Conceito do Produto */}
+                  {hasImage ? (
+                    <div className="relative w-full h-44 rounded-xl overflow-hidden mb-4 bg-slate-950 border border-white/10 group-hover:border-blue-500/30 transition-all">
+                      <img
+                        src={displayImg}
+                        alt={p.name}
+                        className="w-full h-full object-cover group-hover:scale-105 transition-transform duration-500"
+                        onError={(e) => {
+                          e.target.style.display = "none";
+                        }}
+                      />
+                      <div className="absolute inset-0 bg-gradient-to-t from-[#0B0F17] via-transparent to-black/40" />
+                      <span className="absolute top-2.5 left-2.5 px-2.5 py-0.5 rounded-full text-[10px] font-semibold tracking-wider uppercase bg-black/70 backdrop-blur-md text-blue-300 border border-white/10">
+                        {p.category || "Produto"}
+                      </span>
+                      <span className="absolute bottom-2.5 right-2.5 text-xs font-bold px-2.5 py-1 rounded-lg bg-black/80 backdrop-blur-md text-emerald-400 border border-emerald-500/30">
+                        {p.price ? `${p.price} €` : "Sob Orçamento"}
+                      </span>
+                    </div>
+                  ) : (
+                    <div 
+                      onClick={() => openEdit(p)}
+                      className="w-full h-24 rounded-xl border border-dashed border-white/10 hover:border-blue-500/40 bg-white/[0.02] hover:bg-blue-500/5 cursor-pointer flex flex-col items-center justify-center gap-1.5 mb-4 transition-all text-slate-400 hover:text-blue-300"
+                    >
+                      <ImageIcon className="w-5 h-5 text-slate-500 group-hover:text-blue-400" />
+                      <span className="text-xs font-medium">Adicionar Foto / Print Real</span>
+                      <span className="text-[10px] text-slate-500">Clique para anexar imagem</span>
+                    </div>
+                  )}
+
+                  {!hasImage && (
+                    <div className="flex items-start justify-between gap-3 mb-3">
+                      <span className="px-2.5 py-1 rounded-full text-[11px] font-semibold tracking-wider uppercase bg-blue-500/10 text-blue-300 border border-blue-500/20">
+                        {p.category || "Produto"}
+                      </span>
+                      <div className="text-right">
+                        <span className="text-lg font-bold text-white">
+                          {p.price ? `${p.price} €` : "Sob Orçamento"}
+                        </span>
+                        <p className="text-[11px] text-slate-400">{p.pricing_model || "Fixo"}</p>
+                      </div>
+                    </div>
+                  )}
+
+                  <h3 className="text-base font-bold text-white group-hover:text-blue-400 transition-colors">
+                    {p.name}
+                  </h3>
+
+                  {p.visual_details && (
+                    <p className="text-xs text-slate-400 mt-2 line-clamp-2 bg-blue-500/[0.04] p-2 rounded-lg border border-blue-500/10">
+                      <strong className="text-blue-300">Visual:</strong> {p.visual_details}
+                    </p>
+                  )}
+
+                  {p.value_prop && (
+                    <p className="text-xs text-slate-300 mt-2 line-clamp-2 bg-white/[0.02] p-2 rounded-lg border border-white/5">
+                      <strong className="text-blue-400">UVP:</strong> {p.value_prop}
+                    </p>
+                  )}
+
+                  {p.offer && (
+                    <p className="text-xs text-emerald-400/90 mt-2 line-clamp-1">
+                      <strong>Oferta:</strong> {p.offer}
+                    </p>
+                  )}
+
+                  <div className="grid grid-cols-3 gap-2 mt-4 pt-3 border-t border-white/5 text-center text-[11px]">
+                    <div className="bg-white/[0.02] p-2 rounded-lg">
+                      <span className="text-slate-400 block">Campanhas</span>
+                      <span className="font-bold text-white">{p.campaigns_count || 0}</span>
+                    </div>
+                    <div className="bg-white/[0.02] p-2 rounded-lg">
+                      <span className="text-slate-400 block">Conteúdos</span>
+                      <span className="font-bold text-white">{p.contents_count || 0}</span>
+                    </div>
+                    <div className="bg-white/[0.02] p-2 rounded-lg">
+                      <span className="text-slate-400 block">Publicados</span>
+                      <span className="font-bold text-emerald-400">{p.published_count || 0}</span>
+                    </div>
                   </div>
                 </div>
 
-                <h3 className="text-base font-bold text-white group-hover:text-blue-400 transition-colors">
-                  {p.name}
-                </h3>
-
-                {p.value_prop && (
-                  <p className="text-xs text-slate-300 mt-2 line-clamp-2 bg-white/[0.02] p-2 rounded-lg border border-white/5">
-                    <strong className="text-blue-400">UVP:</strong> {p.value_prop}
-                  </p>
-                )}
-
-                {p.main_pain && (
-                  <p className="text-xs text-slate-400 mt-2 line-clamp-2">
-                    <strong className="text-rose-400">Dor:</strong> {p.main_pain}
-                  </p>
-                )}
-
-                {p.offer && (
-                  <p className="text-xs text-emerald-400/90 mt-2 line-clamp-1">
-                    <strong>Oferta:</strong> {p.offer}
-                  </p>
-                )}
-
-                <div className="grid grid-cols-3 gap-2 mt-4 pt-3 border-t border-white/5 text-center text-[11px]">
-                  <div className="bg-white/[0.02] p-2 rounded-lg">
-                    <span className="text-slate-400 block">Campanhas</span>
-                    <span className="font-bold text-white">{p.campaigns_count || 0}</span>
+                <div className="flex items-center justify-between gap-2 mt-5 pt-3 border-t border-white/5">
+                  <div className="flex gap-1">
+                    <Button size="sm" variant="ghost" onClick={() => openEdit(p)} className="h-8 w-8 p-0 text-slate-400 hover:text-white rounded-lg">
+                      <Edit className="w-3.5 h-3.5" />
+                    </Button>
+                    <Button size="sm" variant="ghost" onClick={() => handleDelete(p.id)} className="h-8 w-8 p-0 text-rose-400 hover:text-rose-300 rounded-lg">
+                      <Trash2 className="w-3.5 h-3.5" />
+                    </Button>
                   </div>
-                  <div className="bg-white/[0.02] p-2 rounded-lg">
-                    <span className="text-slate-400 block">Conteúdos</span>
-                    <span className="font-bold text-white">{p.contents_count || 0}</span>
-                  </div>
-                  <div className="bg-white/[0.02] p-2 rounded-lg">
-                    <span className="text-slate-400 block">Publicados</span>
-                    <span className="font-bold text-emerald-400">{p.published_count || 0}</span>
+                  <div className="flex items-center gap-2">
+                    {onOpenStudioWithProduct && (
+                      <Button 
+                        size="sm" 
+                        variant="outline"
+                        onClick={() => onOpenStudioWithProduct(p)} 
+                        className="h-8 rounded-xl border-purple-500/30 text-purple-300 hover:bg-purple-600 hover:text-white text-xs font-medium transition-all"
+                        title="Criar anúncio no Studio com foto e dados deste produto"
+                      >
+                        <Wand2 className="w-3.5 h-3.5 mr-1" /> Studio
+                      </Button>
+                    )}
+                    <Button 
+                      size="sm" 
+                      onClick={() => onSelectForCampaign(p)} 
+                      className="h-8 rounded-xl bg-blue-600/20 hover:bg-blue-600 text-blue-300 hover:text-white text-xs font-medium border border-blue-500/30 transition-all"
+                    >
+                      Campanha <ArrowUpRight className="w-3.5 h-3.5 ml-1" />
+                    </Button>
                   </div>
                 </div>
               </div>
-
-              <div className="flex items-center justify-between gap-2 mt-5 pt-3 border-t border-white/5">
-                <div className="flex gap-1">
-                  <Button size="sm" variant="ghost" onClick={() => openEdit(p)} className="h-8 w-8 p-0 text-slate-400 hover:text-white rounded-lg">
-                    <Edit className="w-3.5 h-3.5" />
-                  </Button>
-                  <Button size="sm" variant="ghost" onClick={() => handleDelete(p.id)} className="h-8 w-8 p-0 text-rose-400 hover:text-rose-300 rounded-lg">
-                    <Trash2 className="w-3.5 h-3.5" />
-                  </Button>
-                </div>
-                <Button size="sm" onClick={() => onSelectForCampaign(p)} className="h-8 rounded-xl bg-blue-600/20 hover:bg-blue-600 text-blue-300 hover:text-white text-xs font-medium border border-blue-500/30 transition-all">
-                  Criar Campanha <ArrowUpRight className="w-3.5 h-3.5 ml-1" />
-                </Button>
-              </div>
-            </div>
-          ))}
+            );
+          })}
         </div>
       )}
 
@@ -246,15 +371,105 @@ export const VitrineSection = ({ products = [], onRefresh, onSelectForCampaign, 
           <DialogHeader>
             <DialogTitle className="text-lg font-bold flex items-center gap-2">
               <Store className="w-5 h-5 text-blue-400" />
-              {editingProduct ? "Editar Produto / Serviço" : "Registar Produto na Vitrine"}
+              {editingProduct ? "Editar Produto / Domus" : "Registar Produto na Vitrine"}
             </DialogTitle>
           </DialogHeader>
 
           <div className="space-y-4 py-2">
+            {/* Seção Visual / Fotografia Real do Produto */}
+            <div className="p-4 rounded-xl bg-white/[0.02] border border-white/10 space-y-3">
+              <div className="flex items-center justify-between flex-wrap gap-2">
+                <div className="flex items-center gap-2">
+                  <ImageIcon className="w-4 h-4 text-blue-400" />
+                  <span className="text-xs font-semibold text-white">Fotografia Real ou Print do Produto</span>
+                </div>
+                <div className="flex items-center gap-2">
+                  <input
+                    type="file"
+                    ref={fileInputRef}
+                    onChange={handleUploadImage}
+                    accept="image/*"
+                    className="hidden"
+                  />
+                  <Button
+                    type="button"
+                    size="sm"
+                    variant="outline"
+                    disabled={uploadingImage}
+                    onClick={() => fileInputRef.current?.click()}
+                    className="h-7 text-xs border-blue-500/30 text-blue-300 hover:bg-blue-500/10 rounded-lg"
+                  >
+                    {uploadingImage ? <Loader2 className="w-3 h-3 animate-spin mr-1.5" /> : <Upload className="w-3 h-3 mr-1.5" />}
+                    Carregar Foto / Print
+                  </Button>
+                  <Button
+                    type="button"
+                    size="sm"
+                    variant="outline"
+                    disabled={generatingConcept}
+                    onClick={handleGenerateConcept}
+                    className="h-7 text-xs border-purple-500/30 text-purple-300 hover:bg-purple-500/10 rounded-lg"
+                  >
+                    {generatingConcept ? <Loader2 className="w-3 h-3 animate-spin mr-1.5" /> : <Sparkles className="w-3 h-3 mr-1.5" />}
+                    Gerar Conceito IA (1K)
+                  </Button>
+                </div>
+              </div>
+
+              {imageUrl ? (
+                <div className="relative rounded-lg overflow-hidden border border-white/10 bg-black/40 h-48 flex items-center justify-center group">
+                  <img
+                    src={imageUrl}
+                    alt="Prévia do Produto"
+                    className="w-full h-full object-contain"
+                  />
+                  <div className="absolute top-2 right-2">
+                    <Button
+                      type="button"
+                      size="sm"
+                      variant="destructive"
+                      onClick={() => setImageUrl("")}
+                      className="h-7 px-2 text-xs rounded-lg shadow-lg"
+                    >
+                      <X className="w-3.5 h-3.5 mr-1" /> Remover
+                    </Button>
+                  </div>
+                  <div className="absolute bottom-2 left-2 px-2 py-0.5 rounded bg-black/70 backdrop-blur-md text-[11px] text-emerald-300 border border-emerald-500/20">
+                    ✓ Imagem Ativa no Catálogo
+                  </div>
+                </div>
+              ) : (
+                <div 
+                  onClick={() => fileInputRef.current?.click()}
+                  className="border border-dashed border-white/10 rounded-lg p-5 text-center cursor-pointer hover:border-blue-500/40 hover:bg-white/[0.01] transition-all"
+                >
+                  <Upload className="w-6 h-6 text-slate-500 mx-auto mb-1.5" />
+                  <p className="text-xs text-slate-300 font-medium">Carregue uma foto real, print ou render 3D do seu produto</p>
+                  <p className="text-[11px] text-slate-500 mt-0.5">Ex: Foto do Domus, equipamento ou produto físico (PNG, JPG até 25MB)</p>
+                </div>
+              )}
+
+              <div>
+                <label className="text-xs text-slate-400 font-medium flex items-center gap-1.5">
+                  <Palette className="w-3.5 h-3.5 text-slate-400" />
+                  Detalhes Visuais & Físicos do Produto (DNA Visual)
+                </label>
+                <Input
+                  value={visualDetails}
+                  onChange={(e) => setVisualDetails(e.target.value)}
+                  placeholder="Ex.: Estrutura geodésica em madeira tratada, triângulos com lona translúcida e deck de madeira..."
+                  className="mt-1 bg-white/[0.03] border-white/10 text-white text-xs"
+                />
+                <p className="text-[10px] text-slate-500 mt-1">
+                  Este DNA visual guia o gerador de imagens para que o Studio e as Campanhas criem imagens com a aparência autêntica do seu produto.
+                </p>
+              </div>
+            </div>
+
             <div className="grid grid-cols-2 gap-4">
               <div>
-                <label className="text-xs text-slate-400 font-medium">Nome do Produto / Serviço *</label>
-                <Input value={name} onChange={(e) => setName(e.target.value)} placeholder="Ex.: Instalação Elétrica Industrial" className="mt-1 bg-white/[0.03] border-white/10 text-white" />
+                <label className="text-xs text-slate-400 font-medium">Nome do Produto / Domus *</label>
+                <Input value={name} onChange={(e) => setName(e.target.value)} placeholder="Ex.: Domus Geodésico Glamping 6m" className="mt-1 bg-white/[0.03] border-white/10 text-white" />
               </div>
               <div>
                 <label className="text-xs text-slate-400 font-medium">Categoria</label>
@@ -263,7 +478,7 @@ export const VitrineSection = ({ products = [], onRefresh, onSelectForCampaign, 
                     <SelectValue />
                   </SelectTrigger>
                   <SelectContent className="bg-[#0B0F17] border-white/10 text-white">
-                    {["Serviço", "Produto", "Obra / Instalação", "Consultoria", "Subscrição", "Infoproduto", "Outro"].map((c) => (
+                    {["Produto", "Obra / Instalação", "Serviço", "Consultoria", "Subscrição", "Infoproduto", "Outro"].map((c) => (
                       <SelectItem key={c} value={c}>{c}</SelectItem>
                     ))}
                   </SelectContent>
@@ -273,8 +488,8 @@ export const VitrineSection = ({ products = [], onRefresh, onSelectForCampaign, 
 
             <div className="grid grid-cols-2 gap-4">
               <div>
-                <label className="text-xs text-slate-400 font-medium">Preço / Ticket Médio (€)</label>
-                <Input type="number" value={price} onChange={(e) => setPrice(e.target.value)} placeholder="Ex.: 1500" className="mt-1 bg-white/[0.03] border-white/10 text-white" />
+                <label className="text-xs text-slate-400 font-medium">Preço / Valor (€)</label>
+                <Input type="number" value={price} onChange={(e) => setPrice(e.target.value)} placeholder="Ex.: 4500" className="mt-1 bg-white/[0.03] border-white/10 text-white" />
               </div>
               <div>
                 <label className="text-xs text-slate-400 font-medium">Modelo de Cobrança</label>
@@ -300,39 +515,39 @@ export const VitrineSection = ({ products = [], onRefresh, onSelectForCampaign, 
 
             <div>
               <label className="text-xs text-slate-400 font-medium">Descrição Comercial</label>
-              <Textarea value={description} onChange={(e) => setDescription(e.target.value)} placeholder="Descreva a solução, escopo e diferenciais..." className="mt-1 bg-white/[0.03] border-white/10 text-white min-h-[70px]" />
+              <Textarea value={description} onChange={(e) => setDescription(e.target.value)} placeholder="Descreva a solução, especificações técnicas, materiais e diferenciais..." className="mt-1 bg-white/[0.03] border-white/10 text-white min-h-[70px]" />
             </div>
 
             <div className="grid grid-cols-2 gap-4">
               <div>
                 <label className="text-xs text-slate-400 font-medium">Público-Alvo Prioritário</label>
-                <Input value={targetAudience} onChange={(e) => setTargetAudience(e.target.value)} placeholder="Ex.: Gestores de condomínio e fábricas" className="mt-1 bg-white/[0.03] border-white/10 text-white" />
+                <Input value={targetAudience} onChange={(e) => setTargetAudience(e.target.value)} placeholder="Ex.: Proprietários de glamping, turismo rural ou quinta" className="mt-1 bg-white/[0.03] border-white/10 text-white" />
               </div>
               <div>
                 <label className="text-xs text-slate-400 font-medium">Principal Dor Resolvida</label>
-                <Input value={mainPain} onChange={(e) => setMainPain(e.target.value)} placeholder="Ex.: Paragens não programadas e avarias" className="mt-1 bg-white/[0.03] border-white/10 text-white" />
+                <Input value={mainPain} onChange={(e) => setMainPain(e.target.value)} placeholder="Ex.: Alto custo de construção tradicional e demora de licenciamento" className="mt-1 bg-white/[0.03] border-white/10 text-white" />
               </div>
             </div>
 
             <div className="grid grid-cols-2 gap-4">
               <div>
                 <label className="text-xs text-slate-400 font-medium">Proposta Única de Valor (UVP)</label>
-                <Input value={valueProp} onChange={(e) => setValueProp(e.target.value)} placeholder="Ex.: Resposta em 2h com garantia de 5 anos" className="mt-1 bg-white/[0.03] border-white/10 text-white" />
+                <Input value={valueProp} onChange={(e) => setValueProp(e.target.value)} placeholder="Ex.: Montagem em 3 dias com durabilidade de 20 anos" className="mt-1 bg-white/[0.03] border-white/10 text-white" />
               </div>
               <div>
                 <label className="text-xs text-slate-400 font-medium">Oferta / Gancho Especial</label>
-                <Input value={offer} onChange={(e) => setOffer(e.target.value)} placeholder="Ex.: Diagnóstico térmico gratuito no 1º mês" className="mt-1 bg-white/[0.03] border-white/10 text-white" />
+                <Input value={offer} onChange={(e) => setOffer(e.target.value)} placeholder="Ex.: Projeto 3D e entrega gratuita em Portugal Continental" className="mt-1 bg-white/[0.03] border-white/10 text-white" />
               </div>
             </div>
 
             <div className="grid grid-cols-2 gap-4">
               <div>
                 <label className="text-xs text-slate-400 font-medium">CTA Principal</label>
-                <Input value={cta} onChange={(e) => setCta(e.target.value)} placeholder="Ex.: Pedir Orçamento Grátis" className="mt-1 bg-white/[0.03] border-white/10 text-white" />
+                <Input value={cta} onChange={(e) => setCta(e.target.value)} placeholder="Ex.: Pedir Orçamento de Instalação" className="mt-1 bg-white/[0.03] border-white/10 text-white" />
               </div>
               <div>
                 <label className="text-xs text-slate-400 font-medium">Posicionamento de Mercado</label>
-                <Input value={positioning} onChange={(e) => setPositioning(e.target.value)} placeholder="Ex.: Especialista Industrial Premium" className="mt-1 bg-white/[0.03] border-white/10 text-white" />
+                <Input value={positioning} onChange={(e) => setPositioning(e.target.value)} placeholder="Ex.: Solução de Glamping Ecológico de Alta Gama" className="mt-1 bg-white/[0.03] border-white/10 text-white" />
               </div>
             </div>
           </div>

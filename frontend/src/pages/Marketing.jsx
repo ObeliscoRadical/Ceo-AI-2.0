@@ -155,6 +155,22 @@ export default function Marketing() {
     setActiveTab("studio");
   };
 
+  const handleOpenStudioWithProduct = (product) => {
+    const prodImg = product.image_url || (product.images && product.images[0]) || null;
+    setStudioInitialPost({
+      product_id: product.id,
+      title: `Destaque · ${product.name}`,
+      strategy: "Conversão Direta",
+      goal: "vendas",
+      visual_briefing: product.visual_details || product.description || "",
+      image_url: prodImg,
+      image_variants: prodImg ? [prodImg] : [],
+      caption: product.offer ? `${product.name}: ${product.offer}` : (product.description || ""),
+      cta: product.cta || "Saber Mais"
+    });
+    setActiveTab("studio");
+  };
+
   const handleSendIdeaToStudio = (idea, productId, campaignId, strategy, goal) => {
     const prodId = idea.product_id || (productId !== "none" ? productId : null);
     const campId = idea.campaign_id || (campaignId !== "none" ? campaignId : null);
@@ -406,6 +422,7 @@ export default function Marketing() {
               products={products}
               onRefresh={() => loadAllData(true)}
               onSelectForCampaign={handleSelectProductForCampaign}
+              onOpenStudioWithProduct={handleOpenStudioWithProduct}
               api={api}
             />
           )}

@@ -8,7 +8,7 @@ import uuid
 from datetime import datetime, timezone, timedelta
 from typing import Optional, List, Dict, Any
 from bson import ObjectId
-from fastapi import APIRouter, Depends, HTTPException, Query
+from fastapi import APIRouter, Depends, HTTPException, Query, File, UploadFile
 from pydantic import BaseModel, Field
 
 from core import (
@@ -83,7 +83,7 @@ async def _safe_ai_json(system: str, prompt: str, fallback: dict = None) -> dict
 
 class ProductIn(BaseModel):
     name: str
-    category: Optional[str] = "Serviço"
+    category: Optional[str] = "Produto"
     price: Optional[float] = 0.0
     pricing_model: Optional[str] = "Fixo"
     description: Optional[str] = ""
@@ -95,6 +95,10 @@ class ProductIn(BaseModel):
     positioning: Optional[str] = ""
     channels: Optional[List[str]] = ["Instagram", "Facebook"]
     status: Optional[str] = "active"
+    image_url: Optional[str] = None
+    images: Optional[List[str]] = []
+    visual_details: Optional[str] = ""
+    product_type: Optional[str] = "physical"
 
 
 class CampaignIn(BaseModel):
@@ -319,6 +323,99 @@ Retorne um JSON estruturado com:
         "recommended_channels": ["Instagram", "Facebook", "LinkedIn"]
     })
     return {"enhanced": result}
+
+
+@router.post("/marketing/products/upload-image")
+async def upload_product_image(
+    file: UploadFile = File(...),
+    user: dict = Depends(premium_user)
+):
+    """Upload de foto real, print ou render do produto para a Vitrine."""
+    uid = user["id"]
+    cid = await active_company_id(uid)
+    contents = await file.read()
+    if len(contents) == 0:
+        raise HTTPException(400, "Arquivo vazio.")
+    if len(contents) > 25 * 1024 * 1024:
+        raise HTTPException(400, "Arquivo excede limite de 25MB.")
+    
+    ext = "png"
+    if file.filename:
+        parts = file.filename.rsplit(".", 1)
+        if len(parts) > 1 and parts[1].lower() in ["jpg", "jpeg", "png", "webp", "gif"]:
+            ext = parts[1].lower()
+    
+    fname = f"product_real_{uuid.uuid4().hex[:12]}.{ext}"
+    target_path = UPLOAD_DIR / fname
+    target_path.write_bytes(contents)
+    
+    b64_str = base64.b64encode(contents).decode()
+    content_type = file.content_type or f"image/{ext}"
+    now = datetime.now(timezone.utc).isoformat()
+    
+    await db.uploaded_files.update_one(
+        {"filename": fname},
+        {"$set": {"data": b64_str, "content_type": content_type, "created_at": now}},
+        upsert=True
+    )
+    await db.social_media.update_one(
+        {"_id": fname},
+        {"$set": {"user_id": uid, "company_id": cid, "filename": fname, "data": b64_str, "content_type": content_type, "created_at": now}},
+        upsert=True
+    )
+    
+    return {
+        "ok": True,
+        "image_url": f"/uploads/{fname}",
+        "filename": fname,
+        "message": "Foto do produto carregada e persistida com sucesso."
+    }
+
+
+@router.post("/marketing/products/generate-concept-image")
+async def generate_product_concept_image(
+    payload: Dict[str, Any],
+    user: dict = Depends(premium_user)
+):
+    """Gera imagem comercial realista em 1K com base no nome e detalhes visuais do produto."""
+    uid = user["id"]
+    cid = await active_company_id(uid)
+    name = payload.get("name", "Produto")
+    details = payload.get("visual_details") or payload.get("description") or ""
+    cat = payload.get("category", "Produto")
+    
+    prompt = f"Professional commercial product photography of {name}, {cat}. {details}. Pristine real-world setting, hyperrealistic lighting, 35mm lens, natural textures, 1k resolution"
+    
+    raw_imgs = await generate_marketing_images(
+        prompt=prompt,
+        number_of_images=1,
+        scene_prompts=[prompt],
+        topic_query=f"{name} {cat}",
+        aspect_ratio="1:1"
+    )
+    if not raw_imgs or len(raw_imgs[0]) < 500:
+        raise HTTPException(500, "Não foi possível gerar a imagem conceitual do produto.")
+        
+    fname = f"product_ai_{uuid.uuid4().hex[:12]}.png"
+    (UPLOAD_DIR / fname).write_bytes(raw_imgs[0])
+    b64_str = base64.b64encode(raw_imgs[0]).decode()
+    now = datetime.now(timezone.utc).isoformat()
+    
+    await db.uploaded_files.update_one(
+        {"filename": fname},
+        {"$set": {"data": b64_str, "content_type": "image/png", "created_at": now}},
+        upsert=True
+    )
+    await db.social_media.update_one(
+        {"_id": fname},
+        {"$set": {"user_id": uid, "company_id": cid, "filename": fname, "data": b64_str, "content_type": "image/png", "created_at": now}},
+        upsert=True
+    )
+    return {
+        "ok": True,
+        "image_url": f"/uploads/{fname}",
+        "message": "Conceito visual gerado com sucesso em 1K!"
+    }
 
 
 # ============================================================================
@@ -614,15 +711,19 @@ async def _build_studio_post_from_idea(
     network: str = "Instagram",
     strategy: str = "Educativo",
     goal: str = "leads",
-    generate_image: bool = True
+    generate_image: bool = True,
+    uid: str = ""
 ) -> dict:
     title_raw = idea.get("title", "Post Estratégico")
     format_type = idea.get("format", "Post")
     angle = idea.get("angle", strategy)
+    user_id_val = uid or prod.get("user_id") or company.get("user_id") or ""
+    prod_visual = prod.get("visual_details", "")
     
     system = "Atue como Redator Executivo e Diretor Criativo para Redes Sociais no Studio COIA."
     prompt = f"""Empresa: {company.get('name', 'Empresa')} | Setor: {company.get('sector', 'Serviços/Geral')}
 Produto/Serviço: {prod.get('name', 'Oferta')} | Preço: {prod.get('price', 'n/d')} | Proposta: {prod.get('value_prop', '')} | Dor: {prod.get('main_pain', '')}
+Visual DNA / Detalhes Físicos do Produto: {prod_visual}
 Campanha: {camp.get('name', 'Geral')} | Oferta: {camp.get('offer', prod.get('offer', ''))}
 Rede Social: {network}
 Formato Solicitado: {format_type}
@@ -655,7 +756,7 @@ Retorne em formato JSON:
         "caption": f"Na {company.get('name', 'nossa empresa')}, garantimos excelência e rigor em cada detalhe.\n\nEvite prejuízos e fale hoje mesmo com a nossa equipa especializada.",
         "cta": "Envie mensagem privada para saber mais.",
         "hashtags": ["#empresas", "#qualidade", "#portugal", "#negocios"],
-        "visual_briefing": f"{prod.get('name', 'Professional')} {company.get('sector', 'Business')} commercial photography, cinematic lighting, ultra-detailed 8k.",
+        "visual_briefing": f"{prod.get('name', 'Professional')} {company.get('sector', 'Business')} commercial photography, cinematic lighting, realistic 1k texture.",
         "carousel_slides": [
             {"slide_number": 1, "title": "Atenção", "content": f"O que precisa de saber sobre {prod.get('name', 'este serviço')}"},
             {"slide_number": 2, "title": "O Desafio", "content": "Como evitar paragens e custos desnecessários"},
@@ -682,6 +783,8 @@ Retorne em formato JSON:
                     "colors": company.get("brand_colors") or company.get("colors")
                 }
             )
+            if visual_prompt and prod_visual:
+                visual_prompt = f"{visual_prompt}. Physical authentic product visual details: {prod_visual}."
             scenes = await generate_post_visual_scenes(
                 titulo=result.get("title") or title_raw,
                 legenda=result.get("caption") or "",
@@ -690,6 +793,8 @@ Retorne em formato JSON:
                 sector=company.get("sector") or "",
                 company_name=company.get("name") or ""
             )
+            if prod_visual:
+                scenes = [f"{s}. Authentic product appearance: {prod_visual}" for s in (scenes or [])]
             topic_q = f"{prod.get('name', '')} {result.get('hook', '')}".strip() or "business commercial"
             asp = "4:5" if str(format_type).lower() in ["vertical", "story", "stories", "reels", "post 4:5", "4:5"] else "1:1"
             raw_imgs = await generate_marketing_images(
@@ -704,14 +809,15 @@ Retorne em formato JSON:
                     fname = f"studio_img_{uuid.uuid4().hex[:12]}.png"
                     (UPLOAD_DIR / fname).write_bytes(img_data)
                     b64_str = base64.b64encode(img_data).decode()
+                    now = datetime.now(timezone.utc).isoformat()
                     await db.uploaded_files.update_one(
                         {"filename": fname},
-                        {"$set": {"data": b64_str, "content_type": "image/png", "created_at": datetime.now(timezone.utc).isoformat()}},
+                        {"$set": {"data": b64_str, "content_type": "image/png", "created_at": now}},
                         upsert=True
                     )
                     await db.social_media.update_one(
                         {"_id": fname},
-                        {"$set": {"user_id": uid, "filename": fname, "data": b64_str, "content_type": "image/png", "created_at": datetime.now(timezone.utc).isoformat()}},
+                        {"$set": {"user_id": user_id_val, "filename": fname, "data": b64_str, "content_type": "image/png", "created_at": now}},
                         upsert=True
                     )
                     image_variants.append(f"/uploads/{fname}")
@@ -720,6 +826,9 @@ Retorne em formato JSON:
         except Exception as e:
             logger.warning(f"Erro ao gerar imagem para lote: {e}")
             
+    if prod.get("image_url") and prod["image_url"] not in image_variants:
+        image_variants.insert(0, prod["image_url"])
+        
     return {
         "product_id": prod.get("id"),
         "campaign_id": camp.get("id"),
@@ -884,9 +993,11 @@ async def generate_studio_post(payload: Dict[str, Any], user: dict = Depends(pre
         except Exception:
             pass
 
+    prod_visual = prod.get("visual_details", "")
     system = "Atue como Redator Executivo e Criador de Conteúdo para Redes Sociais no Studio COIA."
     prompt = f"""Empresa: {company.get('name', 'Empresa')} | Setor: {company.get('sector', 'Serviços/Geral')}
 Produto Associado: {prod.get('name', 'Oferta')} | Preço: {prod.get('price', 'n/d')} | Proposta: {prod.get('value_prop', '')}
+Visual DNA / Detalhes Físicos do Produto: {prod_visual}
 Campanha Associada: {camp.get('name', 'Geral')} | Oferta: {camp.get('offer', prod.get('offer', ''))}
 Rede Social: {network}
 Formato: {format_type}
@@ -934,6 +1045,8 @@ Gere um post completo de alta qualidade e pronto a publicar em formato JSON:
                     "colors": company.get("brand_colors") or company.get("colors")
                 }
             )
+            if visual_prompt and prod_visual:
+                visual_prompt = f"{visual_prompt}. Authentic physical product visual appearance: {prod_visual}."
             scenes = [visual_prompt] if visual_prompt else await generate_post_visual_scenes(
                 titulo=result.get("title") or "Post Profissional",
                 legenda=result.get("caption") or "",
@@ -942,6 +1055,8 @@ Gere um post completo de alta qualidade e pronto a publicar em formato JSON:
                 sector=company.get("sector") or "",
                 company_name=company.get("name") or ""
             )
+            if prod_visual:
+                scenes = [f"{s}. Authentic physical product appearance: {prod_visual}" for s in (scenes or [])]
             topic_q = f"{prod.get('name', '')} {result.get('hook', '')}".strip() or "business commercial"
             asp = "4:5" if (str(format_type).lower() in ["vertical", "story", "stories", "reels", "post 4:5", "4:5"] or str(payload.get("aspect_ratio", "")).lower() in ["4:5", "vertical", "portrait"]) else "1:1"
             raw_imgs = await generate_marketing_images(
@@ -955,12 +1070,27 @@ Gere um post completo de alta qualidade e pronto a publicar em formato JSON:
                 if isinstance(img_data, bytes) and len(img_data) > 500:
                     fname = f"studio_img_{uuid.uuid4().hex[:12]}.png"
                     (UPLOAD_DIR / fname).write_bytes(img_data)
+                    b64_str = base64.b64encode(img_data).decode()
+                    now = datetime.now(timezone.utc).isoformat()
+                    await db.uploaded_files.update_one(
+                        {"filename": fname},
+                        {"$set": {"data": b64_str, "content_type": "image/png", "created_at": now}},
+                        upsert=True
+                    )
+                    await db.social_media.update_one(
+                        {"_id": fname},
+                        {"$set": {"user_id": uid, "company_id": cid, "filename": fname, "data": b64_str, "content_type": "image/png", "created_at": now}},
+                        upsert=True
+                    )
                     image_variants.append(f"/uploads/{fname}")
                 elif isinstance(img_data, str) and img_data.startswith(("http", "/")):
                     image_variants.append(img_data)
         except Exception as e:
             logger.warning(f"Erro ao gerar imagem para post do studio: {e}")
             
+    if prod.get("image_url") and prod["image_url"] not in image_variants:
+        image_variants.insert(0, prod["image_url"])
+        
     out_post = {
         "product_id": product_id,
         "campaign_id": campaign_id,
