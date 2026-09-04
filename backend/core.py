@@ -8,7 +8,7 @@ load_dotenv(ROOT_DIR / '.env')
 from fastapi import HTTPException, Request, Response, Depends, Header, UploadFile, File, Form, Query
 from fastapi.responses import StreamingResponse
 from motor.motor_asyncio import AsyncIOMotorClient
-from typing import List, Optional, Dict, Any
+from typing import List, Optional, Dict, Any, Union
 from bson import ObjectId
 from datetime import datetime, timezone, timedelta
 import logging, uuid, jwt, bcrypt, io, json, requests, random, stripe, httpx, hashlib, secrets, base64, asyncio, threading, time, re, urllib.parse
@@ -212,6 +212,70 @@ async def generate_post_visual_scenes(titulo: str, legenda: str, hook: str = "",
         f"Close up dynamic shot of specialized hands and premium instruments delivering {subj}, clean contemporary environment, cinematic lighting, shallow depth of field, 8k commercial photography, no text, no watermark, no cartoon",
         f"Wide architectural shot of a confident entrepreneur in modern executive space reviewing results, golden hour ambient light, rich authentic textures, 8k commercial photography, no text, no watermark"
     ]
+
+async def gerar_prompt_imagem_do_post(post: Union[Dict[str, Any], str], brand_context: Optional[Dict[str, Any]] = None) -> str:
+    """
+    Etapa intermediária automática: analisa o texto do post em 4 camadas
+    (DOR, PROMESSA, TOM E POSICIONAMENTO, ESTADO A ILUSTRAR)
+    e produz um prompt visual rico, estratégico e fotorrealista pronto para a API de imagem.
+    """
+    system = (
+        "Tu és um diretor de arte especializado em transformar copy de marketing em prompts de geração de imagem fotorrealista para redes sociais (Instagram/Facebook feed, formato quadrado 1:1).\n\n"
+        "Vais receber o texto completo de um post (hook, legenda, CTA, hashtags). A tua tarefa é ANALISAR o post em 4 camadas antes de escrever o prompt de imagem:\n\n"
+        "1. DOR — Qual é o problema/medo/frustração central que o post menciona ou implica? (Ex: falhas inesperadas, perda de dinheiro, caos, insegurança)\n\n"
+        "2. PROMESSA — Qual é a solução ou resultado desejado que o post vende? Extrai as palavras-chave emocionais (ex: previsibilidade, controlo, estabilidade, tranquilidade, confiança).\n\n"
+        "3. TOM E POSICIONAMENTO — Analisa o registo do texto (preço mencionado, linguagem usada, público-alvo) para decidir o nível de sofisticação visual: económico vs. premium, técnico vs. executivo, urgente vs. calmo.\n\n"
+        "4. ESTADO A ILUSTRAR — Decide se a imagem deve mostrar o \"problema\" (dor, caos) ou a \"solução\" (estado desejado após resolver o problema). Regra geral: se o post já está a vender a solução/resultado (não está a descrever um cenário de crise em si), ilustra o ESTADO DESEJADO, não o problema. Nunca ilustres os dois ao mesmo tempo numa imagem estática — isso é só para vídeos com duas cenas.\n\n"
+        "Depois de fazeres esta análise (internamente, não precisas de a mostrar), traduz cada camada em decisões visuais concretas:\n"
+        "- DOR e PROMESSA → que elementos visuais concretos representam essas ideias abstratas? (ex: \"previsibilidade\" pode virar um painel com gráficos de análise preditiva; \"estabilidade\" pode virar um indicador verde de status)\n"
+        "- TOM → escolhe cenário, iluminação, paleta de cores e nível de produção coerentes com o posicionamento (ex: premium = escritório moderno, iluminação cinematográfica; económico = ambiente mais simples e direto)\n"
+        "- Formato: sempre imagem quadrada (1:1), fotorrealista, pensada para ser compreendida em menos de 2 segundos de scroll no feed\n\n"
+        "Regras fixas do prompt final:\n"
+        "- Escreve sempre em português de Portugal\n"
+        "- Especifica: hiper-realista, fotográfico, iluminação cinematográfica, profundidade de campo rasa, ultra detalhado, 4K\n"
+        "- Indica sempre a paleta de cores da marca (usa a paleta fornecida no contexto da marca; se não houver marca definida, escolhe uma paleta coerente com o tom do post)\n"
+        "- Por omissão, pede \"sem texto no ecrã, sem legendas, sem logótipos\" — EXCETO se um pequeno indicador textual (ex: um status tipo \"sistema estável\") reforçar diretamente o conceito central do post; nesse caso podes incluí-lo deliberadamente\n"
+        "- Nunca ilustres o texto do post à letra (ex: se o post menciona \"349,99€\", não colocas esse número na imagem) — ilustra o SENTIMENTO e o CONCEITO, não as palavras\n\n"
+        "Devolve APENAS o prompt final em texto corrido, pronto a enviar à API de imagem. Não incluas explicações, títulos ou a tua análise — só o prompt."
+    )
+    
+    # Extrair texto do post
+    if isinstance(post, dict):
+        hook = post.get("hook") or post.get("gancho") or ""
+        titulo = post.get("title") or post.get("titulo") or ""
+        legenda = post.get("caption") or post.get("legenda") or post.get("copy") or ""
+        cta = post.get("cta") or ""
+        hashtags = post.get("hashtags") or ""
+        if isinstance(hashtags, list):
+            hashtags = " ".join(hashtags)
+        post_text = f"Hook: {hook}\nTítulo: {titulo}\nLegenda: {legenda}\nCTA: {cta}\nHashtags: {hashtags}".strip()
+    else:
+        post_text = str(post).strip()
+
+    brand_info = ""
+    if brand_context and isinstance(brand_context, dict):
+        nome = brand_context.get("name") or brand_context.get("company_name") or ""
+        setor = brand_context.get("sector") or ""
+        paleta = brand_context.get("colors") or brand_context.get("palette") or brand_context.get("brand_colors") or ""
+        brand_info = f"CONTEXTO DA MARCA:\nNome: {nome}\nSetor: {setor}\nPaleta de Cores: {paleta}\n\n"
+        
+    user_prompt = f"{brand_info}POST COMPLETO:\n{post_text}"
+    
+    try:
+        res = await ai_text(system, user_prompt)
+        prompt_limpo = re.sub(r'```(?:json|text)?', '', res).strip().strip('"').strip("'")
+        if len(prompt_limpo) > 25:
+            return prompt_limpo
+    except Exception as e:
+        logger.warning(f"gerar_prompt_imagem_do_post note: {e}")
+        
+    return (
+        "Cria uma imagem quadrada (1:1) hiper-realista, fotográfica, iluminação cinematográfica, "
+        "profundidade de campo rasa, ultra detalhado, 4K, ilustrando o estado de tranquilidade, precisão e controlo "
+        "num ambiente corporativo contemporâneo, sem texto no ecrã, sem logótipos."
+    )
+
+gerarPromptImagemDoPost = gerar_prompt_imagem_do_post
 
 async def search_topic_exact_images(query: str, count: int = 3) -> list[bytes]:
     """Procura imagens reais e profissionais no DuckDuckGo estritamente correspondentes ao tema."""

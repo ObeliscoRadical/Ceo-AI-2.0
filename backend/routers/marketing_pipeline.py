@@ -21,6 +21,8 @@ from core import (
     generate_marketing_image,
     generate_marketing_images,
     generate_post_visual_scenes,
+    gerar_prompt_imagem_do_post,
+    gerarPromptImagemDoPost,
     get_erp_financial_context,
     logger,
     premium_user,
@@ -663,8 +665,23 @@ Retorne em formato JSON:
     })
     
     image_variants = []
+    visual_prompt = None
     if generate_image:
         try:
+            visual_prompt = await gerar_prompt_imagem_do_post(
+                post={
+                    "hook": result.get("hook"),
+                    "title": result.get("title") or title_raw,
+                    "caption": result.get("caption"),
+                    "cta": result.get("cta"),
+                    "hashtags": result.get("hashtags")
+                },
+                brand_context={
+                    "name": company.get("name"),
+                    "sector": company.get("sector"),
+                    "colors": company.get("brand_colors") or company.get("colors")
+                }
+            )
             scenes = await generate_post_visual_scenes(
                 titulo=result.get("title") or title_raw,
                 legenda=result.get("caption") or "",
@@ -675,7 +692,7 @@ Retorne em formato JSON:
             )
             topic_q = f"{prod.get('name', '')} {result.get('hook', '')}".strip() or "business commercial"
             raw_imgs = await generate_marketing_images(
-                prompt=scenes[0] if scenes else (result.get("visual_briefing") or ""),
+                prompt=visual_prompt or (scenes[0] if scenes else (result.get("visual_briefing") or "")),
                 number_of_images=2,
                 scene_prompts=scenes,
                 topic_query=topic_q
@@ -715,6 +732,7 @@ Retorne em formato JSON:
         "cta": result.get("cta"),
         "hashtags": result.get("hashtags", []),
         "visual_briefing": result.get("visual_briefing"),
+        "image_prompt": visual_prompt,
         "carousel_slides": result.get("carousel_slides", []) if format_type == "Carrossel" else [],
         "image_url": image_variants[0] if image_variants else None,
         "image_variants": image_variants,
@@ -897,8 +915,23 @@ Gere um post completo de alta qualidade e pronto a publicar em formato JSON:
     })
     
     image_variants = []
+    visual_prompt = None
     if payload.get("generate_image", True):
         try:
+            visual_prompt = await gerar_prompt_imagem_do_post(
+                post={
+                    "hook": result.get("hook"),
+                    "title": result.get("title") or "Post Profissional",
+                    "caption": result.get("caption"),
+                    "cta": result.get("cta"),
+                    "hashtags": result.get("hashtags")
+                },
+                brand_context={
+                    "name": company.get("name"),
+                    "sector": company.get("sector"),
+                    "colors": company.get("brand_colors") or company.get("colors")
+                }
+            )
             scenes = await generate_post_visual_scenes(
                 titulo=result.get("title") or "Post Profissional",
                 legenda=result.get("caption") or "",
@@ -909,7 +942,7 @@ Gere um post completo de alta qualidade e pronto a publicar em formato JSON:
             )
             topic_q = f"{prod.get('name', '')} {result.get('hook', '')}".strip() or "business commercial"
             raw_imgs = await generate_marketing_images(
-                prompt=scenes[0] if scenes else (result.get("visual_briefing") or ""),
+                prompt=visual_prompt or (scenes[0] if scenes else (result.get("visual_briefing") or "")),
                 number_of_images=2,
                 scene_prompts=scenes,
                 topic_query=topic_q
@@ -937,6 +970,7 @@ Gere um post completo de alta qualidade e pronto a publicar em formato JSON:
         "cta": result.get("cta"),
         "hashtags": result.get("hashtags", []),
         "visual_briefing": result.get("visual_briefing"),
+        "image_prompt": visual_prompt,
         "image_url": image_variants[0] if image_variants else None,
         "image_variants": image_variants,
         "structure_breakdown": result.get("structure_breakdown", {}),
@@ -959,6 +993,20 @@ async def generate_single_studio_image(payload: Dict[str, Any], user: dict = Dep
     prompt = payload.get("prompt") or payload.get("visual_briefing") or ""
     
     try:
+        visual_prompt = await gerar_prompt_imagem_do_post(
+            post={
+                "hook": hook,
+                "title": title,
+                "caption": caption,
+                "cta": payload.get("cta", ""),
+                "hashtags": payload.get("hashtags", "")
+            },
+            brand_context={
+                "name": company.get("name"),
+                "sector": company.get("sector"),
+                "colors": company.get("brand_colors") or company.get("colors")
+            }
+        )
         scenes = await generate_post_visual_scenes(
             titulo=title or prompt or "Post de Negócios",
             legenda=caption,
@@ -969,7 +1017,7 @@ async def generate_single_studio_image(payload: Dict[str, Any], user: dict = Dep
         )
         topic_q = f"{product_name} {hook}".strip() or "business professional"
         raw_imgs = await generate_marketing_images(
-            prompt=scenes[0] if scenes else prompt,
+            prompt=visual_prompt or (scenes[0] if scenes else prompt),
             number_of_images=1,
             scene_prompts=scenes,
             topic_query=topic_q
@@ -995,12 +1043,12 @@ async def generate_single_studio_image(payload: Dict[str, Any], user: dict = Dep
                 try:
                     await db.marketing_content_pool.update_one(
                         {"_id": ObjectId(content_id), "user_id": uid},
-                        {"$set": {"image_url": img_url}, "$addToSet": {"image_variants": img_url}}
+                        {"$set": {"image_url": img_url, "image_prompt": visual_prompt}, "$addToSet": {"image_variants": img_url}}
                     )
                 except Exception:
                     pass
                     
-            return {"ok": True, "image_url": img_url}
+            return {"ok": True, "image_url": img_url, "image_prompt": visual_prompt}
     except Exception as e:
         logger.error(f"Erro ao gerar imagem individual: {e}")
         raise HTTPException(status_code=500, detail=f"Erro ao gerar imagem: {e}")
@@ -1180,6 +1228,20 @@ async def generate_all_pool_images(payload: Optional[Dict[str, Any]] = None, use
             product_name = item.get("product_name") or ""
             prompt = item.get("visual_briefing") or ""
             
+            visual_prompt = await gerar_prompt_imagem_do_post(
+                post={
+                    "hook": hook,
+                    "title": title,
+                    "caption": caption,
+                    "cta": item.get("cta", ""),
+                    "hashtags": item.get("hashtags", "")
+                },
+                brand_context={
+                    "name": company.get("name"),
+                    "sector": company.get("sector"),
+                    "colors": company.get("brand_colors") or company.get("colors")
+                }
+            )
             scenes = await generate_post_visual_scenes(
                 titulo=title,
                 legenda=caption,
@@ -1189,7 +1251,7 @@ async def generate_all_pool_images(payload: Optional[Dict[str, Any]] = None, use
                 company_name=company.get("name", "")
             )
             raw_imgs = await generate_marketing_images(
-                prompt=scenes[0] if scenes else prompt,
+                prompt=visual_prompt or (scenes[0] if scenes else prompt),
                 number_of_images=1,
                 scene_prompts=scenes,
                 topic_query=f"{product_name} {hook}".strip() or "business professional"
@@ -1211,7 +1273,7 @@ async def generate_all_pool_images(payload: Optional[Dict[str, Any]] = None, use
                 img_url = f"/uploads/{fname}"
                 await db.marketing_content_pool.update_one(
                     {"_id": item["_id"]},
-                    {"$set": {"image_url": img_url, "updated_at": now_iso}, "$addToSet": {"image_variants": img_url}}
+                    {"$set": {"image_url": img_url, "image_prompt": visual_prompt, "updated_at": now_iso}, "$addToSet": {"image_variants": img_url}}
                 )
                 generated_count += 1
         except Exception as e:

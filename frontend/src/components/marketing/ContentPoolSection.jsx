@@ -316,6 +316,17 @@ export const ContentPoolSection = ({ poolData = {}, products = [], campaigns = [
                   {item.product_name && <span className="bg-white/5 px-2 py-0.5 rounded">📦 {item.product_name}</span>}
                   {item.campaign_name && <span className="bg-white/5 px-2 py-0.5 rounded">🎯 {item.campaign_name}</span>}
                 </div>
+
+                {item.image_prompt && (
+                  <div className="p-2 rounded-xl bg-white/[0.02] border border-white/5 text-[10px] text-slate-400 space-y-0.5">
+                    <span className="font-semibold text-emerald-400 flex items-center gap-1">
+                      <Sparkles className="w-3 h-3 text-emerald-400" /> Prompt Visual Estratégico:
+                    </span>
+                    <p className="line-clamp-2 hover:line-clamp-none transition-all cursor-pointer text-slate-300 italic" title="Prompt visual gerado pelo Diretor de Arte">
+                      "{item.image_prompt}"
+                    </p>
+                  </div>
+                )}
               </div>
 
               <div className="flex items-center justify-between gap-2 mt-4 pt-3 border-t border-white/5">

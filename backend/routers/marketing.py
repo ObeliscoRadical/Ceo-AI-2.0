@@ -17,6 +17,8 @@ from core import (
     generate_marketing_image,
     generate_marketing_images,
     generate_post_visual_scenes,
+    gerar_prompt_imagem_do_post,
+    gerarPromptImagemDoPost,
     get_erp_financial_context,
     logger,
     premium_user,
@@ -1161,10 +1163,24 @@ async def gen_post_image(inp: ImageIn, user: dict = Depends(premium_user)):
     post = posts[inp.index]
     ctx = await _ctx(uid, cid)
     
-    # 1. Gerar 3 cenas visuais altamente contextuais baseadas na LEGENDA exata do post
+    # 1. Gerar prompt estratégico visual analisando o post em 4 camadas (Dor, Promessa, Tom, Estado a Ilustrar)
     titulo = post.get("titulo", "")
     legenda = post.get("legenda", "")
     tema = post.get("tema", "")
+    visual_prompt = await gerar_prompt_imagem_do_post(
+        post={
+            "hook": post.get("hook") or post.get("gancho") or titulo,
+            "title": titulo,
+            "caption": legenda,
+            "cta": post.get("cta", ""),
+            "hashtags": post.get("hashtags", "")
+        },
+        brand_context={
+            "name": ctx.get("name", ""),
+            "sector": ctx.get("sector", ""),
+            "colors": ctx.get("brand_colors") or ctx.get("colors")
+        }
+    )
     scene_prompts = await generate_post_visual_scenes(
         titulo=titulo,
         legenda=legenda,
@@ -1173,7 +1189,12 @@ async def gen_post_image(inp: ImageIn, user: dict = Depends(premium_user)):
         company_name=ctx.get("name", "")
     )
     
-    images = await generate_marketing_images(scene_prompts=scene_prompts, number_of_images=3, topic_query=f"{titulo} {tema}")
+    images = await generate_marketing_images(
+        prompt=visual_prompt or (scene_prompts[0] if scene_prompts else f"{titulo} {tema}"),
+        scene_prompts=scene_prompts,
+        number_of_images=3,
+        topic_query=f"{titulo} {tema}"
+    )
     logo = await db.brand_assets.find_one({"user_id": uid, "company_id": cid})
     urls = []
     for img in images:
@@ -1187,12 +1208,18 @@ async def gen_post_image(inp: ImageIn, user: dict = Depends(premium_user)):
     posts[inp.index]["image_variants"] = urls
     posts[inp.index]["selected_image_index"] = 0 if urls else None
     posts[inp.index]["image_url"] = urls[0] if urls else None
+    posts[inp.index]["image_prompt"] = visual_prompt
     now_iso = datetime.now(timezone.utc).isoformat()
     await db.marketing_content.update_one(
         {"user_id": uid, "company_id": cid},
         {"$set": {"content": content, "updated_at": now_iso}},
     )
-    return {"image_url": posts[inp.index]["image_url"], "image_variants": urls, "selected_image_index": posts[inp.index]["selected_image_index"]}
+    return {
+        "image_url": posts[inp.index]["image_url"],
+        "image_variants": urls,
+        "selected_image_index": posts[inp.index]["selected_image_index"],
+        "image_prompt": visual_prompt
+    }
 
 
 @router.post("/marketing/posts/{post_id}/image/select")
