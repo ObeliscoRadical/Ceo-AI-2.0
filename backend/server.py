@@ -93,52 +93,59 @@ else:
 
 @app.on_event("startup")
 async def startup():
-    await db.users.create_index("email", unique=True)
-    await db.users.create_index("stripe_subscription_id")
-    await db.users.create_index("stripe_customer_id")
-    await db.password_reset_tokens.create_index("expires_at", expireAfterSeconds=0)
-    await db.social_oauth_states.create_index("expires_at", expireAfterSeconds=0)
-    await db.social_connections.create_index([("user_id", 1), ("company_id", 1)], unique=True)
-    await db.social_jobs.create_index([("user_id", 1), ("company_id", 1), ("run_at", 1)])
-    await db.social_posts.create_index([("user_id", 1), ("company_id", 1), ("created_at", -1)])
-    await db.marketing_post_metrics.create_index([("user_id", 1), ("company_id", 1), ("social_post_id", 1)], unique=True)
-    await db.marketing_post_metrics.create_index([("user_id", 1), ("company_id", 1), ("published_at", -1)])
-    await db.marketing_campaigns.create_index([("user_id", 1), ("company_id", 1), ("created_at", -1)])
-    await db.marketing_briefings.create_index([("user_id", 1), ("company_id", 1), ("date", 1)], unique=True)
-    await db.marketing_briefings.create_index([("user_id", 1), ("company_id", 1), ("created_at", -1)])
-    await db.marketing_organic_agents.create_index([("user_id", 1), ("company_id", 1)], unique=True)
-    await db.marketing_organic_agents.create_index([("status", 1), ("next_run_at", 1)])
-    await db.marketing_organic_actions.create_index([("user_id", 1), ("company_id", 1), ("created_at", -1)])
-    await db.marketing_organic_actions.create_index([("user_id", 1), ("company_id", 1), ("status", 1)])
-    await db.marketing_organic_reports.create_index([("user_id", 1), ("company_id", 1), ("period", 1), ("reference_key", 1)], unique=True)
-    await db.marketing_organic_reports.create_index([("user_id", 1), ("company_id", 1), ("created_at", -1)])
-    await db.site_publication_settings.create_index([("user_id", 1), ("company_id", 1)], unique=True)
-    await db.site_content_entries.create_index([("user_id", 1), ("company_id", 1), ("kind", 1), ("slug", 1)])
-    await db.site_content_entries.create_index([("kind", 1), ("status", 1), ("published_at", -1)])
-    await db.site_content_entries.create_index([("kind", 1), ("slot_key", 1)])
-    await db.site_content_versions.create_index([("user_id", 1), ("company_id", 1), ("entry_id", 1), ("created_at", -1)])
-    await db.site_publication_logs.create_index([("user_id", 1), ("company_id", 1), ("created_at", -1)])
-    await db.growth_internal_page_daily.create_index([("user_id", 1), ("company_id", 1), ("date", 1), ("page_key", 1)], unique=True)
-    await db.growth_page_snapshots.create_index([("user_id", 1), ("company_id", 1), ("source", 1), ("window", 1), ("page_path", 1)], unique=True)
-    await db.growth_query_snapshots.create_index([("user_id", 1), ("company_id", 1), ("page_path", 1), ("query", 1)], unique=True)
-    await db.growth_sync_runs.create_index([("user_id", 1), ("company_id", 1), ("started_at", -1)])
-    await db.growth_agent_actions.create_index([("user_id", 1), ("company_id", 1), ("created_at", -1)])
-    await db.growth_agent_reports.create_index([("user_id", 1), ("company_id", 1), ("period", 1), ("reference_key", 1)], unique=True)
-    await db.erp_integrations.create_index([("user_id", 1), ("company_id", 1)], unique=True)
-    await db.erp_integrations.create_index("endpoint_id", unique=True)
-    await db.erp_events.create_index([("endpoint_id", 1), ("event_key", 1)], unique=True)
-    await db.erp_events.create_index([("user_id", 1), ("company_id", 1), ("received_at", -1)])
-    await db.erp_financial_contexts.create_index([("user_id", 1), ("company_id", 1)], unique=True)
-    await db.marketing_products.create_index([("user_id", 1), ("company_id", 1), ("created_at", -1)])
-    await db.marketing_content_pool.create_index([("user_id", 1), ("company_id", 1), ("status", 1)])
-    await db.marketing_content_pool.create_index([("user_id", 1), ("company_id", 1), ("product_id", 1)])
-    await db.marketing_content_pool.create_index([("user_id", 1), ("company_id", 1), ("campaign_id", 1)])
-    await db.marketing_schedule_slots.create_index([("user_id", 1), ("company_id", 1), ("scheduled_at", 1)])
-    await db.marketing_posting_plans.create_index([("user_id", 1), ("company_id", 1)], unique=True)
-    await db.marketing_experiments.create_index([("user_id", 1), ("company_id", 1), ("created_at", -1)])
-    await db.marketing_autopilot_config.create_index([("user_id", 1), ("company_id", 1)], unique=True)
-    await db.marketing_autopilot_logs.create_index([("user_id", 1), ("company_id", 1), ("created_at", -1)])
-    await db.marketing_growth_insights.create_index([("user_id", 1), ("company_id", 1), ("created_at", -1)])
+    indexes = [
+        (db.users, "email", {"unique": True}),
+        (db.users, "stripe_subscription_id", {}),
+        (db.users, "stripe_customer_id", {}),
+        (db.password_reset_tokens, "expires_at", {"expireAfterSeconds": 0}),
+        (db.social_oauth_states, "expires_at", {"expireAfterSeconds": 0}),
+        (db.social_connections, [("user_id", 1), ("company_id", 1)], {"unique": True}),
+        (db.social_jobs, [("user_id", 1), ("company_id", 1), ("run_at", 1)], {}),
+        (db.social_posts, [("user_id", 1), ("company_id", 1), ("created_at", -1)], {}),
+        (db.marketing_post_metrics, [("user_id", 1), ("company_id", 1), ("social_post_id", 1)], {"unique": True}),
+        (db.marketing_post_metrics, [("user_id", 1), ("company_id", 1), ("published_at", -1)], {}),
+        (db.marketing_campaigns, [("user_id", 1), ("company_id", 1), ("created_at", -1)], {}),
+        (db.marketing_briefings, [("user_id", 1), ("company_id", 1), ("date", 1)], {"unique": True}),
+        (db.marketing_briefings, [("user_id", 1), ("company_id", 1), ("created_at", -1)], {}),
+        (db.marketing_organic_agents, [("user_id", 1), ("company_id", 1)], {"unique": True}),
+        (db.marketing_organic_agents, [("status", 1), ("next_run_at", 1)], {}),
+        (db.marketing_organic_actions, [("user_id", 1), ("company_id", 1), ("created_at", -1)], {}),
+        (db.marketing_organic_actions, [("user_id", 1), ("company_id", 1), ("status", 1)], {}),
+        (db.marketing_organic_reports, [("user_id", 1), ("company_id", 1), ("period", 1), ("reference_key", 1)], {"unique": True}),
+        (db.marketing_organic_reports, [("user_id", 1), ("company_id", 1), ("created_at", -1)], {}),
+        (db.site_publication_settings, [("user_id", 1), ("company_id", 1)], {"unique": True}),
+        (db.site_content_entries, [("user_id", 1), ("company_id", 1), ("kind", 1), ("slug", 1)], {}),
+        (db.site_content_entries, [("kind", 1), ("status", 1), ("published_at", -1)], {}),
+        (db.site_content_entries, [("kind", 1), ("slot_key", 1)], {}),
+        (db.site_content_versions, [("user_id", 1), ("company_id", 1), ("entry_id", 1), ("created_at", -1)], {}),
+        (db.site_publication_logs, [("user_id", 1), ("company_id", 1), ("created_at", -1)], {}),
+        (db.growth_internal_page_daily, [("user_id", 1), ("company_id", 1), ("date", 1), ("page_key", 1)], {"unique": True}),
+        (db.growth_page_snapshots, [("user_id", 1), ("company_id", 1), ("source", 1), ("window", 1), ("page_path", 1)], {"unique": True}),
+        (db.growth_query_snapshots, [("user_id", 1), ("company_id", 1), ("page_path", 1), ("query", 1)], {"unique": True}),
+        (db.growth_sync_runs, [("user_id", 1), ("company_id", 1), ("started_at", -1)], {}),
+        (db.growth_agent_actions, [("user_id", 1), ("company_id", 1), ("created_at", -1)], {}),
+        (db.growth_agent_reports, [("user_id", 1), ("company_id", 1), ("period", 1), ("reference_key", 1)], {"unique": True}),
+        (db.erp_integrations, [("user_id", 1), ("company_id", 1)], {"unique": True}),
+        (db.erp_integrations, "endpoint_id", {"unique": True}),
+        (db.erp_events, [("endpoint_id", 1), ("event_key", 1)], {"unique": True}),
+        (db.erp_events, [("user_id", 1), ("company_id", 1), ("received_at", -1)], {}),
+        (db.erp_financial_contexts, [("user_id", 1), ("company_id", 1)], {"unique": True}),
+        (db.marketing_products, [("user_id", 1), ("company_id", 1), ("created_at", -1)], {}),
+        (db.marketing_content_pool, [("user_id", 1), ("company_id", 1), ("status", 1)], {}),
+        (db.marketing_content_pool, [("user_id", 1), ("company_id", 1), ("product_id", 1)], {}),
+        (db.marketing_content_pool, [("user_id", 1), ("company_id", 1), ("campaign_id", 1)], {}),
+        (db.marketing_schedule_slots, [("user_id", 1), ("company_id", 1), ("scheduled_at", 1)], {}),
+        (db.marketing_posting_plans, [("user_id", 1), ("company_id", 1)], {"unique": True}),
+        (db.marketing_experiments, [("user_id", 1), ("company_id", 1), ("created_at", -1)], {}),
+        (db.marketing_autopilot_config, [("user_id", 1), ("company_id", 1)], {"unique": True}),
+        (db.marketing_autopilot_logs, [("user_id", 1), ("company_id", 1), ("created_at", -1)], {}),
+        (db.marketing_growth_insights, [("user_id", 1), ("company_id", 1), ("created_at", -1)], {}),
+    ]
+    for coll, key, kwargs in indexes:
+        try:
+            await coll.create_index(key, **kwargs)
+        except Exception as ex:
+            logger.warning(f"Index notice for {coll.name} ({key}): {ex}")
     await db.counters.update_one({"_id": "founder"}, {"$setOnInsert": {"seq": 0}}, upsert=True)
     await db.app_config.update_one({"_id": "founder_campaign"},
                                    {"$setOnInsert": {"active": True, "milestones_sent": []}}, upsert=True)

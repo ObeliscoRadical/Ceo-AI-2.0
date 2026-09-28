@@ -73,8 +73,17 @@ MODEL_MAP = {
 }
 CURRENCY_SYMBOL = {"EUR": "€", "BRL": "R$", "USD": "$"}
 
-mongo_url = os.environ.get('MONGO_URL', 'mongodb://localhost:27017/ceo_ai_2_0')
-client = AsyncIOMotorClient(mongo_url)
+mongo_url = os.environ.get('MONGO_URL') or os.environ.get('MONGODB_URI') or 'mongodb://localhost:27017/ceo_ai_2_0'
+client_options = {}
+try:
+    import certifi
+    ca_file = certifi.where()
+    if ca_file and ("mongodb+srv://" in mongo_url or "ssl=true" in mongo_url.lower() or "tls=true" in mongo_url.lower()):
+        client_options["tlsCAFile"] = ca_file
+except Exception:
+    pass
+
+client = AsyncIOMotorClient(mongo_url, **client_options)
 db = client[os.environ.get('DB_NAME', 'ceo_ai_2_0')]
 
 logging.basicConfig(level=logging.INFO, format='%(asctime)s - %(name)s - %(levelname)s - %(message)s')
@@ -82,7 +91,7 @@ logger = logging.getLogger(__name__)
 
 # ---------------------------------------------------------------- auth helpers
 def get_jwt_secret() -> str:
-    return os.environ["JWT_SECRET"]
+    return os.environ.get("JWT_SECRET", "ceo-ai-secret-default-key-2026")
 
 def hash_password(password: str) -> str:
     return bcrypt.hashpw(password.encode("utf-8"), bcrypt.gensalt()).decode("utf-8")
