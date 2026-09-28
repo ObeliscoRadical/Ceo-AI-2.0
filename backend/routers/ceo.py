@@ -45,6 +45,43 @@ async def update_settings(inp: SettingsInput, user: dict = Depends(get_current_u
     return {**DEFAULT_SETTINGS, **s}
 
 # ---------------------------------------------------------------- chat
+async def _stream_nvidia_chat(system_instruction: str, message: str, api_key: str):
+    """Stream only the visible answer from NVIDIA's OpenAI-compatible API."""
+    payload = {
+        "model": "nvidia/nemotron-3-ultra-550b-a55b",
+        "messages": [
+            {"role": "system", "content": system_instruction + PT_PT_INSTRUCTION},
+            {"role": "user", "content": message},
+        ],
+        "temperature": 1,
+        "top_p": 0.95,
+        "max_tokens": 8192,
+        "chat_template_kwargs": {"enable_thinking": True},
+        "stream": True,
+    }
+    timeout = httpx.Timeout(connect=10.0, read=180.0, write=30.0, pool=10.0)
+    async with httpx.AsyncClient(timeout=timeout) as client:
+        async with client.stream(
+            "POST",
+            "https://integrate.api.nvidia.com/v1/chat/completions",
+            headers={"Authorization": f"Bearer {api_key}", "Content-Type": "application/json"},
+            json=payload,
+        ) as response:
+            response.raise_for_status()
+            async for line in response.aiter_lines():
+                if not line.startswith("data: "):
+                    continue
+                data = line[6:].strip()
+                if data == "[DONE]":
+                    break
+                try:
+                    chunk = json.loads(data)
+                    content = chunk.get("choices", [{}])[0].get("delta", {}).get("content")
+                except (ValueError, KeyError, IndexError, TypeError):
+                    continue
+                if content:
+                    yield content
+
 @router.get("/chat/sessions")
 async def chat_sessions(user: dict = Depends(premium_user)):
     sess = await db.chat_sessions.find({"user_id": user["id"], "session_id": {"$exists": True}}).sort("created_at", -1).to_list(100)
@@ -100,17 +137,30 @@ async def chat(inp: ChatInput, user: dict = Depends(premium_user)):
 
     async def gen():
         full = ""
-        try:
-            um = UserMessage(text=context_msg, file_contents=file_contents) if file_contents else UserMessage(text=context_msg)
-            async for ev in chat_obj.stream_message(um):
-                if isinstance(ev, TextDelta):
-                    full += ev.content
-                    yield f"data: {json.dumps({'delta': ev.content})}\n\n"
-                elif isinstance(ev, StreamDone):
-                    break
-        except Exception as e:
-            logger.error(f"chat error: {e}")
-            yield f"data: {json.dumps({'delta': ' [erro de ligação com o CEO AI 2.0]'})}\n\n"
+        nvidia_key = os.environ.get("NVIDIA_API_KEY")
+        if nvidia_key and not file_contents:
+            try:
+                async for content in _stream_nvidia_chat(chat_obj.system_instruction, context_msg, nvidia_key):
+                    full += content
+                    yield f"data: {json.dumps({'delta': content})}\n\n"
+            except Exception as e:
+                logger.warning("NVIDIA chat unavailable: %s", type(e).__name__)
+                if full:
+                    error_text = " [a resposta foi interrompida; tente novamente]"
+                    full += error_text
+                    yield f"data: {json.dumps({'delta': error_text})}\n\n"
+        if not full:
+            try:
+                um = UserMessage(text=context_msg, file_contents=file_contents) if file_contents else UserMessage(text=context_msg)
+                async for ev in chat_obj.stream_message(um):
+                    if isinstance(ev, TextDelta):
+                        full += ev.content
+                        yield f"data: {json.dumps({'delta': ev.content})}\n\n"
+                    elif isinstance(ev, StreamDone):
+                        break
+            except Exception as e:
+                logger.error(f"chat error: {e}")
+                yield f"data: {json.dumps({'delta': ' [erro de ligação com o CEO AI 2.0]'})}\n\n"
         await db.chat_messages.insert_one({"session_id": session_id, "user_id": user["id"], "role": "assistant",
                                            "content": full, "created_at": datetime.now(timezone.utc).isoformat()})
         if inp.attachment_ids:
