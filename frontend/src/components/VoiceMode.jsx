@@ -6,7 +6,7 @@ import { CEOHumanoidReactor } from "@/components/CEOHumanoidReactor";
 import { api } from "@/lib/api";
 import { Mic, X, Loader2, Volume2 } from "lucide-react";
 
-const STATUS_LABEL = { idle: "Toca para falar", listening: "A ouvir…", thinking: "A pensar…", speaking: "" };
+const STATUS_LABEL = { idle: "Toca para conversar", listening: "A ouvir… fala normalmente", thinking: "A preparar resposta…", speaking: "" };
 
 const b64ToBuf = (b64) => {
   const bin = atob(b64); const len = bin.length; const bytes = new Uint8Array(len);
@@ -24,6 +24,8 @@ export function VoiceMode({ open, onClose, sessionId, onSession }) {
   const mrRef = useRef(null); const chunksRef = useRef([]); const streamRef = useRef(null);
   const acRef = useRef(null); const analyserRef = useRef(null); const rafRef = useRef(null);
   const audioRef = useRef(null); const audioUrlRef = useRef(null); const replyLevelsRef = useRef(null); const sidRef = useRef(sessionId);
+  const continuousRef = useRef(false); const speechStartedRef = useRef(false);
+  const lastVoiceAtRef = useRef(0); const listenStartedAtRef = useRef(0); const discardRecordingRef = useRef(false);
 
   useEffect(() => { sidRef.current = sessionId; }, [sessionId]);
   useEffect(() => { if (!open) cleanup(); return cleanup; /* eslint-disable-next-line */ }, [open]);
@@ -51,6 +53,8 @@ export function VoiceMode({ open, onClose, sessionId, onSession }) {
   };
 
   const cleanup = () => {
+    continuousRef.current = false;
+    discardRecordingRef.current = true;
     cancelAnimationFrame(rafRef.current);
     try { mrRef.current?.state === "recording" && mrRef.current.stop(); } catch {}
     streamRef.current?.getTracks().forEach((t) => t.stop());
@@ -62,9 +66,26 @@ export function VoiceMode({ open, onClose, sessionId, onSession }) {
     const a = analyserRef.current; if (!a) return;
     const buf = new Uint8Array(a.fftSize);
     const tick = () => {
+      if (mrRef.current?.state !== "recording") return;
       a.getByteTimeDomainData(buf);
       let sum = 0; for (let i = 0; i < buf.length; i++) { const v = (buf[i] - 128) / 128; sum += v * v; }
-      setAmp(Math.min(1, Math.sqrt(sum / buf.length) * 3.2));
+      const level = Math.sqrt(sum / buf.length);
+      setAmp(Math.min(1, level * 3.2));
+      const now = performance.now();
+      if (level > 0.025) {
+        speechStartedRef.current = true;
+        lastVoiceAtRef.current = now;
+      } else if (speechStartedRef.current && now - lastVoiceAtRef.current > 1300 && now - listenStartedAtRef.current > 800) {
+        stopListening();
+        return;
+      }
+      if (!speechStartedRef.current && now - listenStartedAtRef.current > 12000) {
+        discardRecordingRef.current = true;
+        continuousRef.current = false;
+        stopListening();
+        setReplyText("Não ouvi a tua voz. Toca no microfone para tentar outra vez.");
+        return;
+      }
       rafRef.current = requestAnimationFrame(tick);
     };
     tick();
@@ -102,8 +123,8 @@ export function VoiceMode({ open, onClose, sessionId, onSession }) {
 
   const pickMime = () => ["audio/webm;codecs=opus", "audio/webm", "audio/mp4"].find((m) => window.MediaRecorder?.isTypeSupported?.(m)) || "";
 
-  const startListening = async () => {
-    setUserText(""); setReplyText("");
+  const startListening = async (keepReply = false) => {
+    if (!keepReply) { setUserText(""); setReplyText(""); }
     clearAudio(); setPlaybackError("");
     try {
       await ensureContext(); // unlock audio within the tap gesture
@@ -111,19 +132,26 @@ export function VoiceMode({ open, onClose, sessionId, onSession }) {
       streamRef.current = stream;
       const src = acRef.current.createMediaStreamSource(stream);
       const an = acRef.current.createAnalyser(); an.fftSize = 512; src.connect(an);
-      analyserRef.current = an; runAmpLoop();
+      analyserRef.current = an;
       const mime = pickMime();
       const mr = new MediaRecorder(stream, mime ? { mimeType: mime } : undefined);
       mrRef.current = mr; chunksRef.current = [];
       mr.ondataavailable = (e) => e.data.size && chunksRef.current.push(e.data);
       mr.onstop = handleStop;
-      mr.start(); setStatus("listening");
+      speechStartedRef.current = false;
+      discardRecordingRef.current = false;
+      listenStartedAtRef.current = performance.now();
+      mr.start(); setStatus("listening"); runAmpLoop();
     } catch (e) {
-      setStatus("idle"); setReplyText("Preciso de acesso ao microfone para conversar por voz.");
+      continuousRef.current = false;
+      setStatus("idle");
+      if (keepReply) setPlaybackError("Toca no microfone para continuar a conversa.");
+      else setReplyText("Preciso de acesso ao microfone para conversar por voz.");
     }
   };
 
   const stopListening = () => {
+    if (mrRef.current?.state !== "recording") return;
     cancelAnimationFrame(rafRef.current); setAmp(0);
     try { mrRef.current?.stop(); } catch {}
     streamRef.current?.getTracks().forEach((t) => t.stop());
@@ -131,6 +159,7 @@ export function VoiceMode({ open, onClose, sessionId, onSession }) {
   };
 
   const handleStop = async () => {
+    if (discardRecordingRef.current) { setStatus("idle"); return; }
     const blob = new Blob(chunksRef.current, { type: chunksRef.current[0]?.type || "audio/webm" });
     if (blob.size < 800) { setStatus("idle"); return; }
     const ext = blob.type.includes("mp4") ? "mp4" : "webm";
@@ -181,15 +210,16 @@ export function VoiceMode({ open, onClose, sessionId, onSession }) {
   };
 
   const stopSpeaking = () => {
+    continuousRef.current = false;
     audioRef.current?.pause();
     cancelAnimationFrame(rafRef.current); setAmp(0);
     setStatus("idle");
   };
 
   const onMainButton = () => {
-    if (status === "idle") startListening();
+    if (status === "idle") { continuousRef.current = true; startListening(); }
     else if (status === "listening") stopListening();
-    else if (status === "speaking") stopSpeaking();
+    else if (status === "speaking") { stopSpeaking(); continuousRef.current = true; startListening(true); }
   };
 
   if (!open) return null;
@@ -204,7 +234,10 @@ export function VoiceMode({ open, onClose, sessionId, onSession }) {
         data-testid="voice-mode"
       >
         <audio ref={audioRef} onPlay={() => { setStatus("speaking"); runReplyAmpLoop(); }}
-          onEnded={() => { cancelAnimationFrame(rafRef.current); setAmp(0); setStatus("idle"); }}
+          onEnded={() => {
+            cancelAnimationFrame(rafRef.current); setAmp(0); setStatus("idle");
+            if (continuousRef.current) startListening(true);
+          }}
           onError={() => { if (audioUrlRef.current) { setPlaybackError("Não foi possível reproduzir o áudio neste dispositivo."); setStatus("idle"); } }} />
         <button onClick={onClose} data-testid="voice-close" className="absolute top-6 right-6 w-11 h-11 rounded-full flex items-center justify-center text-white/70 hover:text-white hover:bg-white/10 transition-colors">
           <X className="w-6 h-6" />
@@ -244,7 +277,7 @@ export function VoiceMode({ open, onClose, sessionId, onSession }) {
         >
           {status === "thinking" ? <Loader2 className="w-8 h-8 animate-spin text-white" /> : <Mic className="w-8 h-8 text-white" />}
         </button>
-        <p className="mt-4 text-white/30 text-xs">{status === "listening" ? "Toca para enviar" : "Toca no micro e fala"}</p>
+        <p className="mt-4 text-white/30 text-xs">{status === "listening" ? "Envia automaticamente quando terminares de falar" : "Toca uma vez no microfone para começar"}</p>
       </motion.div>
     </AnimatePresence>,
     document.body

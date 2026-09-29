@@ -45,7 +45,7 @@ async def update_settings(inp: SettingsInput, user: dict = Depends(get_current_u
     return {**DEFAULT_SETTINGS, **s}
 
 # ---------------------------------------------------------------- chat
-async def _stream_nvidia_chat(system_instruction: str, message: str, api_key: str):
+async def _stream_nvidia_chat(system_instruction: str, message: str, api_key: str, thinking: bool = True, max_tokens: int = 8192):
     """Stream only the visible answer from NVIDIA's OpenAI-compatible API."""
     payload = {
         "model": "nvidia/nemotron-3-ultra-550b-a55b",
@@ -55,8 +55,8 @@ async def _stream_nvidia_chat(system_instruction: str, message: str, api_key: st
         ],
         "temperature": 1,
         "top_p": 0.95,
-        "max_tokens": 8192,
-        "chat_template_kwargs": {"enable_thinking": True},
+        "max_tokens": max_tokens,
+        "chat_template_kwargs": {"enable_thinking": thinking},
         "stream": True,
     }
     timeout = httpx.Timeout(connect=10.0, read=180.0, write=30.0, pool=10.0)

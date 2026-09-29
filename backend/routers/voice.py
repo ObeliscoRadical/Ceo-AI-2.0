@@ -3,6 +3,7 @@ from pydantic import BaseModel
 from core import *
 from models import *
 from routers.ceo import _stream_nvidia_chat
+from nvidia_asr import transcribe_voice_audio
 import io, tempfile, os as _os, base64, httpx
 from gtts import gTTS
 
@@ -69,36 +70,14 @@ async def text_to_speech(inp: TTSInput, user: dict = Depends(get_current_user)):
         raise HTTPException(500, "Não foi possível gerar áudio")
     return {"audio_base64": audio_b64}
 
-async def transcribe_voice_audio(audio: bytes, mime: str) -> str:
-    """Send the actual audio bytes to a speech-to-text model, bypassing the text gateway."""
-    api_key = os.environ.get("GEMINI_API_KEY") or os.environ.get("GEMINI_IMAGE_API_KEY")
-    if not api_key:
-        raise RuntimeError("Gemini API key is not configured for transcription")
-    client = genai.Client(api_key=api_key)
-    response = await client.aio.models.generate_content(
-        model="gemini-3.5-transcribe",
-        contents=[types.Part.from_bytes(data=audio, mime_type=mime)],
-    )
-    for candidate in response.candidates or []:
-        for part in candidate.content.parts or []:
-            transcription = getattr(part, "audio_transcription", None)
-            text = getattr(transcription, "text", None)
-            if text:
-                return text.strip()
-    return (response.text or "").strip()
-
 @router.post("/voice/chat")
 async def voice_chat(file: UploadFile = File(...), session_id: str = Form(None), user: dict = Depends(get_current_user)):
     audio = await file.read()
     if not audio:
         raise HTTPException(400, "Áudio vazio")
     
-    ext = (file.filename.split(".")[-1] if file.filename and "." in file.filename else "webm").lower()
-    mime_map = {"webm": "audio/webm", "mp3": "audio/mp3", "wav": "audio/wav", "m4a": "audio/mp4", "mp4": "audio/mp4", "ogg": "audio/ogg"}
-    mime = mime_map.get(ext, file.content_type or "audio/webm")
-
     try:
-        user_text = await transcribe_voice_audio(audio, mime)
+        user_text = await transcribe_voice_audio(audio)
     except Exception as e:
         logger.error("voice transcription error: %s", type(e).__name__)
         raise HTTPException(500, "Não consegui perceber o áudio")
@@ -125,7 +104,7 @@ async def voice_chat(file: UploadFile = File(...), session_id: str = Form(None),
     if nvidia_key:
         try:
             chunks = []
-            async for chunk in _stream_nvidia_chat(chat_obj.system_instruction + "\n\n" + VOICE_HINT, context, nvidia_key):
+            async for chunk in _stream_nvidia_chat(chat_obj.system_instruction + "\n\n" + VOICE_HINT, context, nvidia_key, thinking=False, max_tokens=512):
                 chunks.append(chunk)
             reply = "".join(chunks).strip()
         except Exception as e:

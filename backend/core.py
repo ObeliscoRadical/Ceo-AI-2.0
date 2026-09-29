@@ -435,81 +435,13 @@ async def generate_marketing_images(
         except Exception as e_gemini:
             logger.warning(f"Erro ao inicializar cliente Gemini 3.1 Flash Lite: {e_gemini}")
 
-    # 2. Motor Secundário: Pollinations AI / Flux (caso necessário) com estrita resolução 1K
-    if len(results) < count:
-        headers = {"User-Agent": "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36"}
-        poll_timeout = httpx.Timeout(90.0, connect=15.0)
-        remaining_prompts = scene_prompts[len(results):count]
-        # Dimensões 1K estritas: 1024x1024 para 1:1, ou 1024x1280 para 4:5 Instagram
-        poll_w = 1024
-        poll_h = 1280 if target_aspect == "4:5" else 1024
-        async with httpx.AsyncClient(timeout=poll_timeout, follow_redirects=True, headers=headers) as client:
-            for idx, scene in enumerate(remaining_prompts):
-                img_bytes = None
-                base_seed = int(time.time() * 1000) % 1000000 + (idx * 337)
-                enc_scene = urllib.parse.quote(scene[:420])
-
-                attempts = [("flux-realism", base_seed), ("flux", base_seed + 1), ("flux-pro", base_seed + 2), ("turbo", base_seed + 3)]
-                for model_name, seed in attempts:
-                    poll_url = f"https://image.pollinations.ai/prompt/{enc_scene}?width={poll_w}&height={poll_h}&seed={seed}&nologo=true&model={model_name}&enhance=true"
-                    try:
-                        res = await client.get(poll_url)
-                        if res.status_code == 200 and len(res.content) > 5000 and not res.content.startswith(b'{"error"'):
-                            img_bytes = await _apply_studio_polish(res.content)
-                            break
-                    except Exception as e:
-                        logger.debug(f"Pollinations model {model_name} note: {e}")
-
-                if img_bytes:
-                    results.append(img_bytes)
-
-                if len(results) >= count:
-                    break
-                await asyncio.sleep(0.5)
-
-    # 2. Fallback de Imagens Reais Exatamente Alinhadas ao Título/Tema
-    if len(results) < count:
-        needed = count - len(results)
-        search_q = topic_query or (scene_prompts[0] if scene_prompts else "business management professional")
-        clean_q = re.sub(r'(photorealistic|8k|no text|no watermark|no logos|no cgi|no abstract|commercial photography|,)', ' ', search_q)
-        topic_images = await search_topic_exact_images(clean_q.strip(), count=needed)
-        for t_img in topic_images:
-            polished = await _apply_studio_polish(t_img)
-            results.append(polished)
-            if len(results) >= count:
-                break
-
-    # 3. Fallback Procedural caso tudo falhe
-    while len(results) < count:
-        try:
-            from PIL import Image, ImageDraw
-            idx = len(results)
-            palettes = [
-                ((15, 23, 42), (30, 58, 138), (59, 130, 246)),
-                ((15, 23, 42), (19, 78, 74), (16, 185, 129)),
-                ((24, 24, 27), (88, 28, 135), (168, 85, 247)),
-                ((15, 23, 42), (124, 45, 18), (249, 115, 22)),
-            ]
-            c_bg, c_mid, c_accent = palettes[idx % len(palettes)]
-            img = Image.new("RGBA", (1080, 1080), c_bg)
-            draw = ImageDraw.Draw(img)
-            for r in range(500, 50, -10):
-                alpha = int(35 * (1 - r / 500))
-                draw.ellipse([540 - r, 540 - r, 540 + r, 540 + r], fill=(c_accent[0], c_accent[1], c_accent[2], alpha))
-            draw.rectangle([60, 60, 1020, 1020], outline=c_accent, width=4)
-            draw.line([(60, 540), (1020, 540)], fill=(c_mid[0], c_mid[1], c_mid[2], 120), width=2)
-            buf = io.BytesIO()
-            img.save(buf, format="PNG")
-            results.append(buf.getvalue())
-        except Exception as e:
-            logger.error(f"Procedural fallback error: {e}")
-            break
-
     return results
 
 async def generate_marketing_image(prompt: str) -> bytes:
     """Compat wrapper para chamadas que pedem 1 imagem."""
     imgs = await generate_marketing_images(prompt, number_of_images=1)
+    if not imgs:
+        raise RuntimeError("Não foi possível gerar a imagem com Gemini 1K.")
     return imgs[0]
 
 def prepare_logo(data: bytes) -> bytes:
@@ -1456,8 +1388,56 @@ async def stream_litellm_chat(system_instruction: str, contents, model: str = No
                 logger.warning(f"LiteLLM stream error on {ep}: {e}")
                 continue
 
+async def call_nvidia_text(system: str, prompt_or_contents, json_only: bool = False) -> str:
+    """Route text-only AI tasks to NVIDIA; leave binary inputs to their existing path."""
+    api_key = os.environ.get("NVIDIA_API_KEY")
+    if not api_key:
+        return ""
+    if isinstance(prompt_or_contents, list):
+        if not all(isinstance(part, str) for part in prompt_or_contents):
+            return ""
+        user_text = "\n".join(prompt_or_contents)
+    elif isinstance(prompt_or_contents, str):
+        user_text = prompt_or_contents
+    else:
+        return ""
+    if not user_text.strip():
+        return ""
+    instruction = (system or "") + PT_PT_INSTRUCTION
+    if json_only:
+        instruction += "\nResponde APENAS com um objeto JSON válido, sem texto extra nem markdown."
+    payload = {
+        "model": os.environ.get("NVIDIA_TEXT_MODEL", "nvidia/nemotron-3-super-120b-a12b"),
+        "messages": [{"role": "system", "content": instruction}, {"role": "user", "content": user_text}],
+        "temperature": 1,
+        "top_p": 0.95,
+        "max_tokens": 8192,
+        "chat_template_kwargs": {"enable_thinking": False},
+        "stream": False,
+    }
+    async with httpx.AsyncClient(timeout=60.0) as client:
+        for attempt in range(2):
+            response = await client.post(
+                "https://integrate.api.nvidia.com/v1/chat/completions",
+                headers={"Authorization": f"Bearer {api_key}"}, json=payload,
+            )
+            if response.status_code != 503 or attempt == 1:
+                break
+            await asyncio.sleep(0.2)
+        response.raise_for_status()
+    choices = response.json().get("choices") or []
+    return (choices[0].get("message", {}).get("content") or "").strip() if choices else ""
+
 async def ai_text(system: str, prompt_or_contents, model: str = DEFAULT_LLM_MODEL) -> str:
-    # 1. Tentar primeiro o Gateway Central LiteLLM se configurado
+    # 1. NVIDIA for text-only work. The image key is never used here.
+    try:
+        nvidia_res = await call_nvidia_text(system, prompt_or_contents)
+        if nvidia_res:
+            return sanitize_pt_pt(nvidia_res)
+    except Exception as e:
+        logger.warning("NVIDIA text unavailable: %s", type(e).__name__)
+
+    # 2. Existing gateway fallback for unavailable NVIDIA or non-text input.
     if LITELLM_API_KEY:
         try:
             lit_res = await call_litellm_text(system, prompt_or_contents, model=model)
@@ -1989,7 +1969,18 @@ async def send_push_to_user(user_id: str, title: str, body: str, url: str = "/",
     return sent
 
 async def ai_json(system: str, prompt_or_contents, model: str = DEFAULT_LLM_MODEL):
-    # 1. Tentar primeiro via LiteLLM se configurado
+    # 1. NVIDIA for text-only structured work.
+    try:
+        raw_text = await call_nvidia_text(system, prompt_or_contents, json_only=True)
+        if raw_text:
+            t = raw_text.strip()
+            if "```" in t:
+                t = t.split("```")[1].removeprefix("json").strip()
+            return sanitize_pt_pt(json.loads(t))
+    except Exception as e:
+        logger.warning("NVIDIA JSON unavailable: %s", type(e).__name__)
+
+    # 2. Existing gateway fallback.
     if LITELLM_API_KEY:
         try:
             json_system = (system or "") + "\nResponde APENAS com um objeto JSON válido, sem texto extra nem markdown."
