@@ -79,7 +79,10 @@ async def voice_chat(file: UploadFile = File(...), session_id: str = Form(None),
     try:
         user_text = await transcribe_voice_audio(audio)
     except Exception as e:
-        logger.error("voice transcription error: %s", type(e).__name__)
+        grpc_code = getattr(e, "code", None)
+        logger.error("voice transcription error: type=%s grpc=%s bytes=%s mime=%s",
+                     type(e).__name__, grpc_code() if callable(grpc_code) else None,
+                     len(audio), file.content_type)
         raise HTTPException(500, "Não consegui perceber o áudio")
 
     if not user_text:

@@ -24,7 +24,7 @@ export function VoiceMode({ open, onClose, sessionId, onSession }) {
   const mrRef = useRef(null); const chunksRef = useRef([]); const streamRef = useRef(null);
   const acRef = useRef(null); const analyserRef = useRef(null); const rafRef = useRef(null);
   const audioRef = useRef(null); const audioUrlRef = useRef(null); const replyLevelsRef = useRef(null); const sidRef = useRef(sessionId);
-  const continuousRef = useRef(false); const speechStartedRef = useRef(false);
+  const continuousRef = useRef(false); const speechStartedRef = useRef(false); const speechFramesRef = useRef(0);
   const lastVoiceAtRef = useRef(0); const listenStartedAtRef = useRef(0); const discardRecordingRef = useRef(false);
 
   useEffect(() => { sidRef.current = sessionId; }, [sessionId]);
@@ -73,11 +73,16 @@ export function VoiceMode({ open, onClose, sessionId, onSession }) {
       setAmp(Math.min(1, level * 3.2));
       const now = performance.now();
       if (level > 0.025) {
-        speechStartedRef.current = true;
-        lastVoiceAtRef.current = now;
+        speechFramesRef.current += 1;
+        if (speechFramesRef.current >= 6) {
+          speechStartedRef.current = true;
+          lastVoiceAtRef.current = now;
+        }
       } else if (speechStartedRef.current && now - lastVoiceAtRef.current > 1300 && now - listenStartedAtRef.current > 800) {
         stopListening();
         return;
+      } else {
+        speechFramesRef.current = 0;
       }
       if (!speechStartedRef.current && now - listenStartedAtRef.current > 12000) {
         discardRecordingRef.current = true;
@@ -139,6 +144,7 @@ export function VoiceMode({ open, onClose, sessionId, onSession }) {
       mr.ondataavailable = (e) => e.data.size && chunksRef.current.push(e.data);
       mr.onstop = handleStop;
       speechStartedRef.current = false;
+      speechFramesRef.current = 0;
       discardRecordingRef.current = false;
       listenStartedAtRef.current = performance.now();
       mr.start(); setStatus("listening"); runAmpLoop();
@@ -154,11 +160,11 @@ export function VoiceMode({ open, onClose, sessionId, onSession }) {
     if (mrRef.current?.state !== "recording") return;
     cancelAnimationFrame(rafRef.current); setAmp(0);
     try { mrRef.current?.stop(); } catch {}
-    streamRef.current?.getTracks().forEach((t) => t.stop());
     setStatus("thinking");
   };
 
   const handleStop = async () => {
+    streamRef.current?.getTracks().forEach((t) => t.stop());
     if (discardRecordingRef.current) { setStatus("idle"); return; }
     const blob = new Blob(chunksRef.current, { type: chunksRef.current[0]?.type || "audio/webm" });
     if (blob.size < 800) { setStatus("idle"); return; }

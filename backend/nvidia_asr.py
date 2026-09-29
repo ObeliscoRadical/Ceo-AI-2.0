@@ -3,7 +3,9 @@
 import asyncio
 import os
 import subprocess
+import time
 
+import grpc
 import imageio_ffmpeg
 import riva.client
 
@@ -37,7 +39,17 @@ def _transcribe(audio: bytes, api_key: str) -> str:
         max_alternatives=1,
         enable_automatic_punctuation=True,
     )
-    result = service.offline_recognize(conversion.stdout, config, future=True).result(timeout=25)
+    for attempt in range(2):
+        try:
+            result = service.offline_recognize(conversion.stdout, config, future=True).result(timeout=18)
+            break
+        except grpc.RpcError as error:
+            if attempt or error.code() not in {
+                grpc.StatusCode.UNAVAILABLE, grpc.StatusCode.DEADLINE_EXCEEDED,
+                grpc.StatusCode.RESOURCE_EXHAUSTED,
+            }:
+                raise
+            time.sleep(0.25)
     return " ".join(
         entry.alternatives[0].transcript.strip()
         for entry in result.results if entry.alternatives and entry.alternatives[0].transcript.strip()
