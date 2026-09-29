@@ -2,6 +2,7 @@ from fastapi import APIRouter, Depends, HTTPException, UploadFile, File, Form
 from pydantic import BaseModel
 from core import *
 from models import *
+from routers.ceo import _stream_nvidia_chat
 import io, tempfile, os as _os, base64, httpx
 from gtts import gTTS
 
@@ -12,7 +13,7 @@ FISH_AUDIO_VOICE_ID = os.environ.get("FISH_AUDIO_VOICE_ID", "ec426c7ea3554caba8a
 
 VOICE_HINT = ("(Estás numa conversa por VOZ. Responde de forma falada, natural, calorosa e concisa — "
               "como se estivesses a falar ao telefone com o empresário. Evita listas e formatação; frases curtas. "
-              "Máximo 4-6 frases.)")
+              "Máximo 4-6 frases. Não uses Markdown nem asteriscos; faz no máximo uma pergunta de cada vez.)")
 
 async def synthesize_voice(text: str) -> str:
     """Sintetiza áudio usando a voz Jarbas (Fish Audio) com fallback para gTTS."""
@@ -68,6 +69,24 @@ async def text_to_speech(inp: TTSInput, user: dict = Depends(get_current_user)):
         raise HTTPException(500, "Não foi possível gerar áudio")
     return {"audio_base64": audio_b64}
 
+async def transcribe_voice_audio(audio: bytes, mime: str) -> str:
+    """Send the actual audio bytes to a speech-to-text model, bypassing the text gateway."""
+    api_key = os.environ.get("GEMINI_API_KEY") or os.environ.get("GEMINI_IMAGE_API_KEY")
+    if not api_key:
+        raise RuntimeError("Gemini API key is not configured for transcription")
+    client = genai.Client(api_key=api_key)
+    response = await client.aio.models.generate_content(
+        model="gemini-3.5-transcribe",
+        contents=[types.Part.from_bytes(data=audio, mime_type=mime)],
+    )
+    for candidate in response.candidates or []:
+        for part in candidate.content.parts or []:
+            transcription = getattr(part, "audio_transcription", None)
+            text = getattr(transcription, "text", None)
+            if text:
+                return text.strip()
+    return (response.text or "").strip()
+
 @router.post("/voice/chat")
 async def voice_chat(file: UploadFile = File(...), session_id: str = Form(None), user: dict = Depends(get_current_user)):
     audio = await file.read()
@@ -75,19 +94,13 @@ async def voice_chat(file: UploadFile = File(...), session_id: str = Form(None),
         raise HTTPException(400, "Áudio vazio")
     
     ext = (file.filename.split(".")[-1] if file.filename and "." in file.filename else "webm").lower()
-    mime_map = {"webm": "audio/webm", "mp3": "audio/mp3", "wav": "audio/wav", "m4a": "audio/mp4", "ogg": "audio/ogg"}
+    mime_map = {"webm": "audio/webm", "mp3": "audio/mp3", "wav": "audio/wav", "m4a": "audio/mp4", "mp4": "audio/mp4", "ogg": "audio/ogg"}
     mime = mime_map.get(ext, file.content_type or "audio/webm")
 
     try:
-        audio_part = types.Part.from_bytes(data=audio, mime_type=mime)
-        user_text = await ai_text(
-            "És um transcritor profissional de áudio em português. Transcreve com exatidão o áudio fornecido. Devolve APENAS o texto transcrito sem comentários.",
-            [audio_part, "Transcreve este áudio em português."],
-            model=DEFAULT_LLM_MODEL
-        )
-        user_text = (user_text or "").strip()
+        user_text = await transcribe_voice_audio(audio, mime)
     except Exception as e:
-        logger.error(f"gemini stt error: {e}")
+        logger.error("voice transcription error: %s", type(e).__name__)
         raise HTTPException(500, "Não consegui perceber o áudio")
 
     if not user_text:
@@ -107,12 +120,23 @@ async def voice_chat(file: UploadFile = File(...), session_id: str = Form(None),
     if history:
         hist_txt = "\n".join(f"{h['role']}: {h['content']}" for h in history[-8:])
         context = f"{VOICE_HINT}\n\n[Histórico]\n{hist_txt}\n\n[Nova mensagem falada]\n{user_text}"
-    try:
-        reply = await chat_obj.send_message(UserMessage(text=context))
-        reply = (reply if isinstance(reply, str) else str(reply)).strip()
-    except Exception as e:
-        logger.error(f"voice chat llm error: {e}")
-        raise HTTPException(500, "O CEO não conseguiu responder agora")
+    reply = ""
+    nvidia_key = os.environ.get("NVIDIA_API_KEY")
+    if nvidia_key:
+        try:
+            chunks = []
+            async for chunk in _stream_nvidia_chat(chat_obj.system_instruction + "\n\n" + VOICE_HINT, context, nvidia_key):
+                chunks.append(chunk)
+            reply = "".join(chunks).strip()
+        except Exception as e:
+            logger.warning("NVIDIA voice reply unavailable: %s", type(e).__name__)
+    if not reply:
+        try:
+            reply = await chat_obj.send_message(UserMessage(text=context))
+            reply = (reply if isinstance(reply, str) else str(reply)).strip()
+        except Exception as e:
+            logger.error(f"voice chat llm error: {e}")
+            raise HTTPException(500, "O CEO não conseguiu responder agora")
 
     await db.chat_messages.insert_one({"session_id": sid, "user_id": user["id"], "role": "assistant",
         "content": reply, "created_at": datetime.now(timezone.utc).isoformat()})
