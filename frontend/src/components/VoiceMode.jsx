@@ -4,7 +4,7 @@ import { motion, AnimatePresence } from "framer-motion";
 import { CEOOrb } from "@/components/CEOOrb";
 import { CEOHumanoidReactor } from "@/components/CEOHumanoidReactor";
 import { api } from "@/lib/api";
-import { Mic, X, Loader2 } from "lucide-react";
+import { Mic, X, Loader2, Volume2 } from "lucide-react";
 
 const STATUS_LABEL = { idle: "Toca para falar", listening: "A ouvir…", thinking: "A pensar…", speaking: "" };
 
@@ -19,9 +19,11 @@ export function VoiceMode({ open, onClose, sessionId, onSession }) {
   const [amp, setAmp] = useState(0);
   const [userText, setUserText] = useState("");
   const [replyText, setReplyText] = useState("");
+  const [audioReady, setAudioReady] = useState(false);
+  const [playbackError, setPlaybackError] = useState("");
   const mrRef = useRef(null); const chunksRef = useRef([]); const streamRef = useRef(null);
   const acRef = useRef(null); const analyserRef = useRef(null); const rafRef = useRef(null);
-  const srcNodeRef = useRef(null); const sidRef = useRef(sessionId);
+  const audioRef = useRef(null); const audioUrlRef = useRef(null); const replyLevelsRef = useRef(null); const sidRef = useRef(sessionId);
 
   useEffect(() => { sidRef.current = sessionId; }, [sessionId]);
   useEffect(() => { if (!open) cleanup(); return cleanup; /* eslint-disable-next-line */ }, [open]);
@@ -37,12 +39,22 @@ export function VoiceMode({ open, onClose, sessionId, onSession }) {
     return acRef.current;
   };
 
+  const clearAudio = () => {
+    audioRef.current?.pause();
+    audioRef.current?.removeAttribute("src");
+    if (audioUrlRef.current) URL.revokeObjectURL(audioUrlRef.current);
+    audioUrlRef.current = null;
+    replyLevelsRef.current = null;
+    cancelAnimationFrame(rafRef.current);
+    setAmp(0);
+    setAudioReady(false);
+  };
+
   const cleanup = () => {
     cancelAnimationFrame(rafRef.current);
     try { mrRef.current?.state === "recording" && mrRef.current.stop(); } catch {}
     streamRef.current?.getTracks().forEach((t) => t.stop());
-    try { srcNodeRef.current?.stop(); } catch {}
-    srcNodeRef.current = null; analyserRef.current = null;
+    clearAudio(); analyserRef.current = null;
     setAmp(0); setStatus("idle");
   };
 
@@ -58,10 +70,41 @@ export function VoiceMode({ open, onClose, sessionId, onSession }) {
     tick();
   };
 
+  const runReplyAmpLoop = () => {
+    cancelAnimationFrame(rafRef.current);
+    const tick = () => {
+      const audio = audioRef.current;
+      if (!audio || audio.paused) return;
+      const levels = replyLevelsRef.current;
+      const index = Math.floor(audio.currentTime * 30);
+      setAmp(levels?.[index] ?? 0.12);
+      rafRef.current = requestAnimationFrame(tick);
+    };
+    tick();
+  };
+
+  const analyseReply = async (buffer, url) => {
+    try {
+      const decoded = await acRef.current.decodeAudioData(buffer.slice(0));
+      if (audioUrlRef.current !== url) return;
+      const samples = decoded.getChannelData(0);
+      const step = Math.max(1, Math.floor(decoded.sampleRate / 30));
+      const levels = new Float32Array(Math.ceil(samples.length / step));
+      for (let i = 0; i < levels.length; i++) {
+        let sum = 0;
+        const end = Math.min(samples.length, (i + 1) * step);
+        for (let j = i * step; j < end; j++) sum += samples[j] * samples[j];
+        levels[i] = Math.min(1, Math.sqrt(sum / (end - i * step)) * 3.2);
+      }
+      replyLevelsRef.current = levels;
+    } catch { /* Playback remains available if analysis is unsupported. */ }
+  };
+
   const pickMime = () => ["audio/webm;codecs=opus", "audio/webm", "audio/mp4"].find((m) => window.MediaRecorder?.isTypeSupported?.(m)) || "";
 
   const startListening = async () => {
     setUserText(""); setReplyText("");
+    clearAudio(); setPlaybackError("");
     try {
       await ensureContext(); // unlock audio within the tap gesture
       const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
@@ -98,7 +141,8 @@ export function VoiceMode({ open, onClose, sessionId, onSession }) {
       const { data } = await api.post("/voice/chat", fd, { headers: { "Content-Type": "multipart/form-data" } });
       setUserText(data.user_text); setReplyText(data.reply_text);
       if (data.session_id) { sidRef.current = data.session_id; onSession?.(data.session_id); }
-      if (data.audio_base64) await speak(data.audio_base64); else setStatus("idle");
+      if (data.audio_base64) await speak(data.audio_base64);
+      else { setPlaybackError("O CEO respondeu em texto, mas o áudio não foi gerado."); setStatus("idle"); }
     } catch (e) {
       setReplyText(e?.response?.data?.detail || "Não consegui perceber. Tenta outra vez.");
       setStatus("idle");
@@ -106,23 +150,41 @@ export function VoiceMode({ open, onClose, sessionId, onSession }) {
   };
 
   const speak = async (b64) => {
-    setStatus("speaking");
     try {
-      const ac = await ensureContext();
-      const audioBuffer = await ac.decodeAudioData(b64ToBuf(b64));
-      const src = ac.createBufferSource(); src.buffer = audioBuffer;
-      const an = ac.createAnalyser(); an.fftSize = 512;
-      src.connect(an); an.connect(ac.destination);
-      analyserRef.current = an; srcNodeRef.current = src; runAmpLoop();
-      src.onended = () => { cancelAnimationFrame(rafRef.current); setAmp(0); setStatus("idle"); };
-      src.start(0);
+      clearAudio();
+      const buffer = b64ToBuf(b64);
+      const url = URL.createObjectURL(new Blob([buffer], { type: "audio/mpeg" }));
+      audioUrlRef.current = url;
+      const audio = audioRef.current;
+      if (!audio) { clearAudio(); setStatus("idle"); return; }
+      audio.src = url;
+      setAudioReady(true);
+      setPlaybackError("");
+      if (acRef.current) analyseReply(buffer, url);
+      await audio.play();
     } catch (e) {
-      // playback failed — reply text is still shown
+      setPlaybackError("Toca em «Ouvir resposta» para reproduzir o áudio no iPhone.");
       setStatus("idle");
     }
   };
 
-  const stopSpeaking = () => { try { srcNodeRef.current?.stop(); } catch {} cancelAnimationFrame(rafRef.current); setAmp(0); setStatus("idle"); };
+  const playReply = () => {
+    const audio = audioRef.current;
+    if (!audio || !audioReady) return;
+    setPlaybackError("");
+    if (audio.readyState > 0) audio.currentTime = 0;
+    try {
+      audio.play()?.catch(() => setPlaybackError("Não foi possível reproduzir o áudio neste dispositivo."));
+    } catch {
+      setPlaybackError("Não foi possível reproduzir o áudio neste dispositivo.");
+    }
+  };
+
+  const stopSpeaking = () => {
+    audioRef.current?.pause();
+    cancelAnimationFrame(rafRef.current); setAmp(0);
+    setStatus("idle");
+  };
 
   const onMainButton = () => {
     if (status === "idle") startListening();
@@ -141,6 +203,9 @@ export function VoiceMode({ open, onClose, sessionId, onSession }) {
         style={{ background: "radial-gradient(circle at 50% 40%, #0A0F1E, #05060C 70%)" }}
         data-testid="voice-mode"
       >
+        <audio ref={audioRef} onPlay={() => { setStatus("speaking"); runReplyAmpLoop(); }}
+          onEnded={() => { cancelAnimationFrame(rafRef.current); setAmp(0); setStatus("idle"); }}
+          onError={() => { if (audioUrlRef.current) { setPlaybackError("Não foi possível reproduzir o áudio neste dispositivo."); setStatus("idle"); } }} />
         <button onClick={onClose} data-testid="voice-close" className="absolute top-6 right-6 w-11 h-11 rounded-full flex items-center justify-center text-white/70 hover:text-white hover:bg-white/10 transition-colors">
           <X className="w-6 h-6" />
         </button>
@@ -160,6 +225,14 @@ export function VoiceMode({ open, onClose, sessionId, onSession }) {
             replyText && <p className="text-white text-lg leading-relaxed font-serif-lux" data-testid="voice-reply-text">{replyText}</p>
           )}
         </div>
+
+        {audioReady && status === "idle" && (
+          <button onClick={playReply} data-testid="voice-play-reply"
+            className="mt-3 flex items-center gap-2 rounded-full border border-[#00F0FF]/40 px-5 py-2.5 text-sm text-[#00F0FF] hover:bg-[#00F0FF]/10">
+            <Volume2 className="w-4 h-4" /> Ouvir resposta
+          </button>
+        )}
+        {playbackError && <p className="mt-2 px-8 text-center text-sm text-white/60" role="status">{playbackError}</p>}
 
         <button
           onClick={onMainButton} data-testid="voice-mic-button"
